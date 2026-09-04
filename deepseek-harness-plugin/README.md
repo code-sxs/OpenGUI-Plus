@@ -33,7 +33,7 @@ node lib/cli.js modules
 node lib/cli.js serve --port 8787
 ```
 
-See [`docs/OPENGUI-PLUS.md`](../docs/OPENGUI-PLUS.md) for the complete feature reference and command examples.
+See [`docs/OPENGUI-PLUS.md`](../docs/OPENGUI-PLUS.md) for the complete feature reference and command examples. For a sequential guide to all ten modules, combination workflows, troubleshooting, and extension development, use the [📚 OpenGUI-Plus Tutorial Center](../tutorials/README.md).
 
 ## Codex plugin
 

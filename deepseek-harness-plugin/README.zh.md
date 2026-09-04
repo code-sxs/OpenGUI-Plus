@@ -35,7 +35,7 @@ node lib/cli.js modules
 node lib/cli.js serve --port 8787
 ```
 
-完整功能说明和每个模块的命令示例见 [`docs/OPENGUI-PLUS.zh-CN.md`](../docs/OPENGUI-PLUS.zh-CN.md)。
+完整功能说明和每个模块的命令示例见 [`docs/OPENGUI-PLUS.zh-CN.md`](../docs/OPENGUI-PLUS.zh-CN.md)。如果要按学习顺序逐个掌握十个模块，并查看组合实战、排障和开发教程，请进入独立的[📚 OpenGUI-Plus 全量教程中心](../tutorials/README.md)。
 
 ## Codex Plugin
 
