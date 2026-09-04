@@ -22,7 +22,6 @@
   },
   "files": [
     ".codex-plugin",
-    "docs",
     "lib",
     "web"
   ],
