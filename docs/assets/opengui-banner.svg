@@ -1,117 +1,335 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420" viewBox="0 0 1600 420" role="img" aria-label="OpenGUI Plus banner">
   <defs>
-    <!-- 金色渐变 -->
+    <!-- ===== 金色渐变（文字） ===== -->
     <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#ffe76a"/>
       <stop offset="52%" stop-color="#ffc423"/>
       <stop offset="53%" stop-color="#d88931"/>
       <stop offset="100%" stop-color="#c97726"/>
     </linearGradient>
-    <!-- PLUS 蓝紫渐变 -->
-    <linearGradient id="plusGradient" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#00d4ff"/>
-      <stop offset="50%" stop-color="#7b2ffc"/>
-      <stop offset="100%" stop-color="#ff007f"/>
+
+    <!-- ===== 高端黄金渐变（PLUS 角标背景） ===== -->
+    <linearGradient id="goldBadge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f5e6b8" stop-opacity="0.95"/>
+      <stop offset="30%" stop-color="#d4af37" stop-opacity="0.95"/>
+      <stop offset="55%" stop-color="#c9a050" stop-opacity="0.95"/>
+      <stop offset="80%" stop-color="#b8860b" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#8b7300" stop-opacity="0.95"/>
     </linearGradient>
-    <!-- 分隔光柱渐变 -->
-    <linearGradient id="dividerGradient" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#00d4ff" stop-opacity="0"/>
-      <stop offset="50%" stop-color="#7b2ffc" stop-opacity="0.6"/>
-      <stop offset="100%" stop-color="#ff007f" stop-opacity="0"/>
-    </linearGradient>
-    <!-- 流动光效 -->
-    <linearGradient id="flowGradient" x1="-1" y1="0" x2="2" y2="0">
-      <stop offset="0%" stop-color="#00d4ff" stop-opacity="0"/>
-      <stop offset="40%" stop-color="#7b2ffc" stop-opacity="0.8"/>
-      <stop offset="60%" stop-color="#ff007f" stop-opacity="0.8"/>
-      <stop offset="100%" stop-color="#00d4ff" stop-opacity="0">
-        <animate attributeName="x1" values="-1;2;-1" dur="4s" repeatCount="indefinite"/>
-        <animate attributeName="x2" values="0;3;0" dur="4s" repeatCount="indefinite"/>
+
+    <!-- ===== 五彩流光渐变 ===== -->
+    <linearGradient id="rainbowFlow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f5a0b0" stop-opacity="1">
+        <animate attributeName="offset" values="-0.2;1.2;-0.2" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="16%" stop-color="#7fdbd0" stop-opacity="1">
+        <animate attributeName="offset" values="0;1.4;0" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="33%" stop-color="#c8a8d8" stop-opacity="1">
+        <animate attributeName="offset" values="0.15;1.55;0.15" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="50%" stop-color="#f0c8a0" stop-opacity="1">
+        <animate attributeName="offset" values="0.3;1.7;0.3" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="66%" stop-color="#a8d4b8" stop-opacity="1">
+        <animate attributeName="offset" values="0.45;1.85;0.45" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="83%" stop-color="#e8d48a" stop-opacity="1">
+        <animate attributeName="offset" values="0.6;2.0;0.6" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" stop-color="#f5a0b0" stop-opacity="1">
+        <animate attributeName="offset" values="0.8;2.2;0.8" dur="8s" repeatCount="indefinite"/>
       </stop>
     </linearGradient>
-    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="8" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
+
+    <filter id="flowGlow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#7fdbd0" flood-opacity="0.4"/>
     </filter>
-    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="5" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
+
+    <filter id="letterGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#7fdbd0" flood-opacity="0.5"/>
     </filter>
+
+    <filter id="plusGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#d4af37" flood-opacity="0.5"/>
+    </filter>
+
+    <filter id="softGlow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#ffc423" flood-opacity="0.15"/>
+    </filter>
+
     <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#7b2ffc" stop-opacity="0.1"/>
-      <stop offset="100%" stop-color="#171717" stop-opacity="0"/>
+      <stop offset="0%" stop-color="#7fdbd0" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#141618" stop-opacity="0"/>
     </radialGradient>
+
+    <linearGradient id="plusTextGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff5e0"/>
+      <stop offset="50%" stop-color="#ffdd77"/>
+      <stop offset="100%" stop-color="#b8860b"/>
+    </linearGradient>
   </defs>
 
-  <!-- 背景 -->
-  <rect width="1600" height="420" fill="#171717"/>
+  <rect width="1600" height="420" fill="#141618"/>
   <rect width="1600" height="420" fill="url(#bgGlow)"/>
+
+  <!-- ===== 边框层 ===== -->
+  <rect x="14" y="14" width="1572" height="392" rx="24" ry="24" 
+        fill="none" stroke="#2a2a2a" stroke-width="6" opacity="0.6"/>
+
+  <rect x="14" y="14" width="1572" height="392" rx="24" ry="24" 
+        fill="none" stroke="url(#rainbowFlow)" stroke-width="6" 
+        opacity="0.95"/>
   
-  <!-- 装饰边框 -->
-  <rect x="18" y="18" width="1564" height="384" fill="none" stroke="#242424" stroke-width="6"/>
-  <path d="M52 64H1548" stroke="#232323" stroke-width="3" stroke-dasharray="16 18" opacity="0.55"/>
-  <path d="M52 356H1548" stroke="#232323" stroke-width="3" stroke-dasharray="16 18" opacity="0.55"/>
+  <rect x="14" y="14" width="1572" height="392" rx="24" ry="24" 
+        fill="none" stroke="url(#rainbowFlow)" stroke-width="6" 
+        filter="url(#flowGlow)" opacity="0.35"/>
 
-  <!-- ===== OpenGUI 主标题（左移） ===== -->
-  <g transform="translate(520 238)">
-    <g font-family="'Arial Black', 'Impact', 'Helvetica Neue', sans-serif" font-size="196" font-weight="900" text-anchor="middle" letter-spacing="4">
-      <text x="30" y="12" fill="none" stroke="#f1bf1f" stroke-width="12" opacity="0.95">OpenGUI</text>
-      <text x="22" y="4" fill="none" stroke="#f1bf1f" stroke-width="8" opacity="0.95">OpenGUI</text>
-      <text x="14" y="-4" fill="#c97628" stroke="#111111" stroke-width="8">OpenGUI</text>
-      <text x="0" y="-18" fill="url(#gold)" stroke="#111111" stroke-width="8" filter="url(#softGlow)">OpenGUI</text>
-    </g>
-  </g>
+  <rect x="22" y="22" width="1556" height="376" rx="18" ry="18" 
+        fill="none" stroke="url(#rainbowFlow)" stroke-width="1.5" 
+        opacity="0.5"/>
 
-  <!-- ===== 分隔光柱（视觉缓冲） ===== -->
-  <rect x="980" y="100" width="3" height="220" rx="1.5" fill="url(#dividerGradient)" opacity="0.5">
-    <animate attributeName="opacity" values="0.3;0.7;0.3" dur="3s" repeatCount="indefinite"/>
+  <rect x="30" y="30" width="1540" height="360" rx="12" ry="12" 
+        fill="none" stroke="#e8d8b8" stroke-width="0.6" 
+        opacity="0.08">
+    <animate attributeName="opacity" values="0.05;0.12;0.05" dur="5s" repeatCount="indefinite"/>
   </rect>
 
-  <!-- ===== PLUS 徽章（右移，彻底分开） ===== -->
-  <g transform="translate(1160, 118)">
-    <!-- 旋转光环 -->
-    <circle cx="80" cy="80" r="95" fill="none" stroke="url(#plusGradient)" stroke-width="2" stroke-dasharray="10 8" opacity="0.5">
-      <animateTransform attributeName="transform" type="rotate" from="0 80 80" to="360 80 80" dur="15s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="80" cy="80" r="105" fill="none" stroke="#00d4ff" stroke-width="1" stroke-dasharray="4 12" opacity="0.3">
-      <animateTransform attributeName="transform" type="rotate" from="360 80 80" to="0 80 80" dur="20s" repeatCount="indefinite"/>
-    </circle>
-    <!-- 能量流动线 -->
-    <rect x="-80" y="140" width="320" height="4" rx="2" fill="url(#flowGradient)" opacity="0.8"/>
-    <!-- 脉冲光晕 -->
-    <circle cx="80" cy="80" r="70" fill="#7b2ffc" opacity="0.08">
-      <animate attributeName="r" values="60;85;60" dur="3s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.05;0.15;0.05" dur="3s" repeatCount="indefinite"/>
-    </circle>
-    
-    <!-- PLUS 文字 -->
-    <g font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" text-anchor="middle" letter-spacing="8">
-      <text x="80" y="115" font-size="130" fill="url(#plusGradient)" stroke="#00d4ff" stroke-width="2" filter="url(#glow)" opacity="0.9">PLUS</text>
-      <text x="80" y="115" font-size="130" fill="url(#plusGradient)" stroke="#111" stroke-width="6">PLUS</text>
-      <text x="76" y="107" font-size="130" fill="none" stroke="#ffffff" stroke-width="1.5" opacity="0.4">PLUS</text>
+  <!-- 四角色点 -->
+  <circle cx="42" cy="42" r="5" fill="#f5a0b0" opacity="0.4">
+    <animate attributeName="opacity" values="0.2;0.6;0.2" dur="3.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="1558" cy="42" r="5" fill="#7fdbd0" opacity="0.4">
+    <animate attributeName="opacity" values="0.2;0.6;0.2" dur="4s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="42" cy="378" r="5" fill="#c8a8d8" opacity="0.4">
+    <animate attributeName="opacity" values="0.2;0.6;0.2" dur="3s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="1558" cy="378" r="5" fill="#f0c8a0" opacity="0.4">
+    <animate attributeName="opacity" values="0.2;0.6;0.2" dur="4.5s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- ===== PLUS 角标 ===== -->
+  <g transform="translate(1367, 298)">
+    <g>
+      <path d="M 25 0 L 210 0 L 210 76 Q 210 100 186 100 L 0 100 L 0 25 Q 0 0 25 0 Z" 
+            fill="url(#goldBadge)" 
+            stroke="url(#plusTextGradient)" 
+            stroke-width="1.2"
+            opacity="0.95"/>
+      
+      <path d="M 25 0 L 210 0 L 210 3 L 3 3 L 3 25 Q 3 0 25 0 Z" 
+            fill="#fff5e0" opacity="0.15">
+        <animate attributeName="opacity" values="0.1;0.25;0.1" dur="3s" repeatCount="indefinite"/>
+      </path>
+
+      <g font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" text-anchor="middle">
+        <text x="105" y="62" font-size="48" 
+              fill="url(#plusTextGradient)" 
+              stroke="#0a0c10" 
+              stroke-width="4"
+              filter="url(#plusGlow)">PLUS</text>
+      </g>
+      
+      <rect x="20" y="78" width="170" height="0.8" rx="0.4" fill="url(#plusTextGradient)" opacity="0.25">
+        <animate attributeName="opacity" values="0.15;0.4;0.15" dur="3.5s" repeatCount="indefinite"/>
+      </rect>
+      <text x="105" y="90" font-family="'Courier New', monospace" font-size="10" 
+            fill="#d4af37" text-anchor="middle" opacity="0.4" letter-spacing="2">ENHANCED</text>
     </g>
-    
-    <!-- 底部标签 -->
-    <rect x="-10" y="145" width="180" height="3" rx="1.5" fill="url(#plusGradient)" opacity="0.7"/>
-    <text x="80" y="175" font-family="'Courier New', monospace" font-size="16" fill="#7b2ffc" text-anchor="middle" opacity="0.7" letter-spacing="3">ENHANCED</text>
   </g>
 
-  <!-- ===== 装饰粒子 ===== -->
-  <circle cx="940" cy="150" r="4" fill="#00d4ff" opacity="0.6">
-    <animate attributeName="opacity" values="0.2;1;0.2" dur="2.8s" repeatCount="indefinite"/>
-    <animate attributeName="cy" values="150;140;150" dur="3s" repeatCount="indefinite"/>
-  </circle>
-  <circle cx="1280" cy="270" r="3" fill="#ff007f" opacity="0.5">
-    <animate attributeName="opacity" values="0.3;0.9;0.3" dur="3.5s" repeatCount="indefinite"/>
-  </circle>
-  <circle cx="1220" cy="200" r="5" fill="#7b2ffc" opacity="0.4">
-    <animate attributeName="opacity" values="0.1;0.7;0.1" dur="2.2s" repeatCount="indefinite"/>
-  </circle>
+  <!-- ===== OpenGUI 严格串行跳动（同一时间只有一个字母在动） ===== -->
+  <g font-family="'Arial Black', 'Impact', 'Helvetica Neue', sans-serif" font-size="196" font-weight="900" text-anchor="middle" letter-spacing="0">
+
+    <!-- 
+      时间线：每个字母完整占用 0.6s
+      O:  0.0s - 0.6s
+      p:  0.6s - 1.2s
+      e:  1.2s - 1.8s
+      n:  1.8s - 2.4s
+      G:  2.4s - 3.0s
+      U:  3.0s - 3.6s
+      I:  3.6s - 4.2s
+      然后 4.2s 回到 O，循环
+    -->
+
+    <!-- ===== 字母 O（0.0s - 0.6s 跳动，其余时间静止） ===== -->
+    <g>
+      <!-- 跳动：只在 0-0.6s 窗口内动，其余时间静止归位 -->
+      <animateTransform attributeName="transform" type="translate" 
+        values="475 238; 475 208; 475 238; 475 238; 475 238; 475 238; 475 238" 
+        keyTimes="0;0.3;0.6;0.7;0.8;0.9;1"
+        dur="4.2s" begin="0s" repeatCount="indefinite"
+        calcMode="spline" 
+        keySplines="0.25 0.1 0.25 1;0.42 0 0.58 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1"/>
+      <!-- 抖动层 -->
+      <g>
+        <animateTransform attributeName="transform" type="translate" 
+          values="0 0;-2 -2;2 1;-1 2;1 -1;0 0;0 0;0 0;0 0;0 0;0 0;0 0;0 0;0 0" 
+          keyTimes="0;0.05;0.1;0.15;0.2;0.25;0.3;0.4;0.5;0.6;0.7;0.8;0.9;1"
+          dur="4.2s" begin="0s" repeatCount="indefinite"/>
+        <text x="0" y="-18" fill="url(#gold)" stroke="#111" stroke-width="8" filter="url(#softGlow)">O</text>
+        <!-- 发光层 -->
+        <text x="0" y="-18" fill="#7fdbd0" stroke="none" filter="url(#letterGlow)" opacity="0">
+          O
+          <animate attributeName="opacity" 
+            values="0;0.6;0;0;0;0;0;0;0;0;0;0;0;0" 
+            keyTimes="0;0.25;0.55;0.6;0.65;0.7;0.75;0.8;0.85;0.9;0.95;0.98;0.99;1"
+            dur="4.2s" begin="0s" repeatCount="indefinite"/>
+        </text>
+      </g>
+    </g>
+
+    <!-- ===== 字母 p（0.6s - 1.2s 跳动） ===== -->
+    <g>
+      <animateTransform attributeName="transform" type="translate" 
+        values="565 238; 565 238; 565 238; 565 208; 565 238; 565 238; 565 238" 
+        keyTimes="0;0.1;0.14;0.44;0.74;0.8;1"
+        dur="4.2s" begin="0s" repeatCount="indefinite"
+        calcMode="spline" 
+        keySplines="0 0 1 1;0 0 1 1;0.25 0.1 0.25 1;0.42 0 0.58 1;0 0 1 1;0 0 1 1"/>
+      <g>
+        <animateTransform attributeName="transform" type="translate" 
+          values="0 0;0 0;0 0;-2 -2;2 1;-1 2;1 -1;0 0;0 0;0 0;0 0;0 0;0 0;0 0" 
+          keyTimes="0;0.1;0.14;0.19;0.24;0.29;0.34;0.39;0.5;0.6;0.7;0.8;0.9;1"
+          dur="4.2s" begin="0s" repeatCount="indefinite"/>
+        <text x="0" y="-18" fill="url(#gold)" stroke="#111" stroke-width="8" filter="url(#softGlow)">p</text>
+        <text x="0" y="-18" fill="#f5a0b0" stroke="none" filter="url(#letterGlow)" opacity="0">
+          p
+          <animate attributeName="opacity" 
+            values="0;0;0;0.6;0;0;0;0;0;0;0;0;0;0" 
+            keyTimes="0;0.1;0.14;0.39;0.69;0.74;0.78;0.82;0.86;0.9;0.94;0.97;0.99;1"
+            dur="4.2s" begin="0s" repeatCount="indefinite"/>
+        </text>
+      </g>
+    </g>
+
+    <!-- ===== 字母 e（1.2s - 1.8s 跳动） ===== -->
+    <g>
+      <animateTransform attributeName="transform" type="translate" 
+        values="655 238; 655 238; 655 238; 655 208; 655 238; 655 238; 655 238" 
+        keyTimes="0;0.2;0.28;0.58;0.88;0.94;1"
+        dur="4.2s" begin="0s" repeatCount="indefinite"
+        calcMode="spline" 
+        keySplines="0 0 1 1;0 0 1 1;0.25 0.1 0.25 1;0.42 0 0.58 1;0 0 1 1;0 0 1 1"/>
+      <g>
+        <animateTransform attributeName="transform" type="translate" 
+          values="0 0;0 0;0 0;-2 -2;2 1;-1 2;1 -1;0 0;0 0;0 0;0 0;0 0;0 0;0 0" 
+          keyTimes="0;0.2;0.28;0.33;0.38;0.43;0.48;0.53;0.6;0.7;0.8;0.9;0.95;1"
+          dur="4.2s" begin="0s" repeatCount="indefinite"/>
+        <text x="0" y="-18" fill="url(#gold)" stroke="#111" stroke-width="8" filter="url(#softGlow)">e</text>
+        <text x="0" y="-18" fill="#c8a8d8" stroke="none" filter="url(#letterGlow)" opacity="0">
+          e
+          <animate attributeName="opacity" 
+            values="0;0;0;0.6;0;0;0;0;0;0;0;0;0;0" 
+            keyTimes="0;0.2;0.28;0.53;0.83;0.88;0.91;0.94;0.96;0.98;0.99;0.995;0.998;1"
+            dur="4.2s" begin="0s" repeatCount="indefinite"/>
+        </text>
+      </g>
+    </g>
+
+    <!-- ===== 字母 n（1.8s - 2.4s 跳动） ===== -->
+    <g>
+      <animateTransform attributeName="transform" type="translate" 
+        values="745 238; 745 238; 745 238; 745 208; 745 238; 745 238; 745 238" 
+        keyTimes="0;0.3;0.42;0.72;1;1;1"
+        dur="4.2s" begin="0s" repeatCount="indefinite"
+        calcMode="spline" 
+        keySplines="0 0 1 1;0 0 1 1;0.25 0.1 0.25 1;0.42 0 0.58 1;0 0 1 1;0 0 1 1"/>
+      <g>
+        <animateTransform attributeName="transform" type="translate" 
+          values="0 0;0 0;0 0;-2 -2;2 1;-1 2;1 -1;0 0;0 0;0 0;0 0;0 0;0 0;0 0" 
+          keyTimes="0;0.3;0.42;0.47;0.52;0.57;0.62;0.67;0.75;0.8;0.85;0.9;0.95;1"
+          dur="4.2s" begin="0s" repeatCount="indefinite"/>
+        <text x="0" y="-18" fill="url(#gold)" stroke="#111" stroke-width="8" filter="url(#softGlow)">n</text>
+        <text x="0" y="-18" fill="#f0c8a0" stroke="none" filter="url(#letterGlow)" opacity="0">
+          n
+          <animate attributeName="opacity" 
+            values="0;0;0;0.6;0;0;0;0;0;0;0;0;0;0" 
+            keyTimes="0;0.3;0.42;0.67;0.97;1;1;1;1;1;1;1;1;1"
+            dur="4.2s" begin="0s" repeatCount="indefinite"/>
+        </text>
+      </g>
+    </g>
+
+    <!-- ===== 字母 G（2.4s - 3.0s 跳动） ===== -->
+    <g>
+      <animateTransform attributeName="transform" type="translate" 
+        values="835 238; 835 238; 835 238; 835 208; 835 238; 835 238; 835 238" 
+        keyTimes="0;0.4;0.56;0.86;1;1;1"
+        dur="4.2s" begin="0s" repeatCount="indefinite"
+        calcMode="spline" 
+        keySplines="0 0 1 1;0 0 1 1;0.25 0.1 0.25 1;0.42 0 0.58 1;0 0 1 1;0 0 1 1"/>
+      <g>
+        <animateTransform attributeName="transform" type="translate" 
+          values="0 0;0 0;0 0;-2 -2;2 1;-1 2;1 -1;0 0;0 0;0 0;0 0;0 0;0 0;0 0" 
+          keyTimes="0;0.4;0.56;0.61;0.66;0.71;0.76;0.81;0.85;0.88;0.91;0.94;0.97;1"
+          dur="4.2s" begin="0s" repeatCount="indefinite"/>
+        <text x="0" y="-18" fill="url(#gold)" stroke="#111" stroke-width="8" filter="url(#softGlow)">G</text>
+        <text x="0" y="-18" fill="#a8d4b8" stroke="none" filter="url(#letterGlow)" opacity="0">
+          G
+          <animate attributeName="opacity" 
+            values="0;0;0;0.6;0;0;0;0;0;0;0;0;0;0" 
+            keyTimes="0;0.4;0.56;0.81;1;1;1;1;1;1;1;1;1;1"
+            dur="4.2s" begin="0s" repeatCount="indefinite"/>
+        </text>
+      </g>
+    </g>
+
+    <!-- ===== 字母 U（3.0s - 3.6s 跳动） ===== -->
+    <g>
+      <animateTransform attributeName="transform" type="translate" 
+        values="925 238; 925 238; 925 238; 925 208; 925 238; 925 238; 925 238" 
+        keyTimes="0;0.5;0.7;1;1;1;1"
+        dur="4.2s" begin="0s" repeatCount="indefinite"
+        calcMode="spline" 
+        keySplines="0 0 1 1;0 0 1 1;0.25 0.1 0.25 1;0.42 0 0.58 1;0 0 1 1;0 0 1 1"/>
+      <g>
+        <animateTransform attributeName="transform" type="translate" 
+          values="0 0;0 0;0 0;-2 -2;2 1;-1 2;1 -1;0 0;0 0;0 0;0 0;0 0;0 0;0 0" 
+          keyTimes="0;0.5;0.7;0.75;0.8;0.85;0.9;0.95;0.97;0.98;0.985;0.99;0.995;1"
+          dur="4.2s" begin="0s" repeatCount="indefinite"/>
+        <text x="0" y="-18" fill="url(#gold)" stroke="#111" stroke-width="8" filter="url(#softGlow)">U</text>
+        <text x="0" y="-18" fill="#e8d48a" stroke="none" filter="url(#letterGlow)" opacity="0">
+          U
+          <animate attributeName="opacity" 
+            values="0;0;0;0.6;0;0;0;0;0;0;0;0;0;0" 
+            keyTimes="0;0.5;0.7;0.95;1;1;1;1;1;1;1;1;1;1"
+            dur="4.2s" begin="0s" repeatCount="indefinite"/>
+        </text>
+      </g>
+    </g>
+
+    <!-- ===== 字母 I（3.6s - 4.2s 跳动，然后循环回到 O） ===== -->
+    <g>
+      <animateTransform attributeName="transform" type="translate" 
+        values="1015 238; 1015 238; 1015 238; 1015 208; 1015 238; 1015 238; 1015 238" 
+        keyTimes="0;0.6;0.84;1;1;1;1"
+        dur="4.2s" begin="0s" repeatCount="indefinite"
+        calcMode="spline" 
+        keySplines="0 0 1 1;0 0 1 1;0.25 0.1 0.25 1;0.42 0 0.58 1;0 0 1 1;0 0 1 1"/>
+      <g>
+        <animateTransform attributeName="transform" type="translate" 
+          values="0 0;0 0;0 0;-2 -2;2 1;-1 2;1 -1;0 0;0 0;0 0;0 0;0 0;0 0;0 0" 
+          keyTimes="0;0.6;0.84;0.89;0.94;0.96;0.98;1;1;1;1;1;1;1"
+          dur="4.2s" begin="0s" repeatCount="indefinite"/>
+        <text x="0" y="-18" fill="url(#gold)" stroke="#111" stroke-width="8" filter="url(#softGlow)">I</text>
+        <text x="0" y="-18" fill="#7fdbd0" stroke="none" filter="url(#letterGlow)" opacity="0">
+          I
+          <animate attributeName="opacity" 
+            values="0;0;0;0.6;0;0;0;0;0;0;0;0;0;0" 
+            keyTimes="0;0.6;0.84;0.99;1;1;1;1;1;1;1;1;1;1"
+            dur="4.2s" begin="0s" repeatCount="indefinite"/>
+        </text>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(100, 360)">
+    <text font-family="'Courier New', monospace" font-size="12" fill="#5a6a78" letter-spacing="2" opacity="0.5">
+      v2.0 · AI-POWERED MOBILE AGENT
+      <animate attributeName="opacity" values="0.35;0.6;0.35" dur="7s" repeatCount="indefinite"/>
+    </text>
+  </g>
 </svg>
