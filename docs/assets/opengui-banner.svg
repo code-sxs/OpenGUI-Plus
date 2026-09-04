@@ -1,11 +1,42 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420" viewBox="0 0 1600 420" role="img" aria-label="OpenGUI banner">
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420" viewBox="0 0 1600 420" role="img" aria-label="OpenGUI Plus banner">
   <defs>
+    <!-- 金色渐变 -->
     <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#ffe76a"/>
       <stop offset="52%" stop-color="#ffc423"/>
       <stop offset="53%" stop-color="#d88931"/>
       <stop offset="100%" stop-color="#c97726"/>
     </linearGradient>
+    <!-- PLUS 蓝紫渐变 -->
+    <linearGradient id="plusGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="50%" stop-color="#7b2ffc"/>
+      <stop offset="100%" stop-color="#ff007f"/>
+    </linearGradient>
+    <!-- 分隔光柱渐变 -->
+    <linearGradient id="dividerGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00d4ff" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#7b2ffc" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#ff007f" stop-opacity="0"/>
+    </linearGradient>
+    <!-- 流动光效 -->
+    <linearGradient id="flowGradient" x1="-1" y1="0" x2="2" y2="0">
+      <stop offset="0%" stop-color="#00d4ff" stop-opacity="0"/>
+      <stop offset="40%" stop-color="#7b2ffc" stop-opacity="0.8"/>
+      <stop offset="60%" stop-color="#ff007f" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#00d4ff" stop-opacity="0">
+        <animate attributeName="x1" values="-1;2;-1" dur="4s" repeatCount="indefinite"/>
+        <animate attributeName="x2" values="0;3;0" dur="4s" repeatCount="indefinite"/>
+      </stop>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
     <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur stdDeviation="5" result="blur"/>
       <feMerge>
@@ -13,14 +44,23 @@
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7b2ffc" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#171717" stop-opacity="0"/>
+    </radialGradient>
   </defs>
 
+  <!-- 背景 -->
   <rect width="1600" height="420" fill="#171717"/>
+  <rect width="1600" height="420" fill="url(#bgGlow)"/>
+  
+  <!-- 装饰边框 -->
   <rect x="18" y="18" width="1564" height="384" fill="none" stroke="#242424" stroke-width="6"/>
   <path d="M52 64H1548" stroke="#232323" stroke-width="3" stroke-dasharray="16 18" opacity="0.55"/>
   <path d="M52 356H1548" stroke="#232323" stroke-width="3" stroke-dasharray="16 18" opacity="0.55"/>
 
-  <g aria-label="OpenGUI wordmark" transform="translate(800 238)">
+  <!-- ===== OpenGUI 主标题（左移） ===== -->
+  <g transform="translate(620 238)">
     <g font-family="'Arial Black', 'Impact', 'Helvetica Neue', sans-serif" font-size="196" font-weight="900" text-anchor="middle" letter-spacing="4">
       <text x="30" y="12" fill="none" stroke="#f1bf1f" stroke-width="12" opacity="0.95">OpenGUI</text>
       <text x="22" y="4" fill="none" stroke="#f1bf1f" stroke-width="8" opacity="0.95">OpenGUI</text>
@@ -28,4 +68,50 @@
       <text x="0" y="-18" fill="url(#gold)" stroke="#111111" stroke-width="8" filter="url(#softGlow)">OpenGUI</text>
     </g>
   </g>
+
+  <!-- ===== 分隔光柱（视觉缓冲） ===== -->
+  <rect x="980" y="100" width="3" height="220" rx="1.5" fill="url(#dividerGradient)" opacity="0.5">
+    <animate attributeName="opacity" values="0.3;0.7;0.3" dur="3s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- ===== PLUS 徽章（右移，彻底分开） ===== -->
+  <g transform="translate(1120, 118)">
+    <!-- 旋转光环 -->
+    <circle cx="80" cy="80" r="95" fill="none" stroke="url(#plusGradient)" stroke-width="2" stroke-dasharray="10 8" opacity="0.5">
+      <animateTransform attributeName="transform" type="rotate" from="0 80 80" to="360 80 80" dur="15s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="80" cy="80" r="105" fill="none" stroke="#00d4ff" stroke-width="1" stroke-dasharray="4 12" opacity="0.3">
+      <animateTransform attributeName="transform" type="rotate" from="360 80 80" to="0 80 80" dur="20s" repeatCount="indefinite"/>
+    </circle>
+    <!-- 能量流动线 -->
+    <rect x="-80" y="140" width="320" height="4" rx="2" fill="url(#flowGradient)" opacity="0.8"/>
+    <!-- 脉冲光晕 -->
+    <circle cx="80" cy="80" r="70" fill="#7b2ffc" opacity="0.08">
+      <animate attributeName="r" values="60;85;60" dur="3s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.05;0.15;0.05" dur="3s" repeatCount="indefinite"/>
+    </circle>
+    
+    <!-- PLUS 文字 -->
+    <g font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" text-anchor="middle" letter-spacing="8">
+      <text x="80" y="115" font-size="130" fill="url(#plusGradient)" stroke="#00d4ff" stroke-width="2" filter="url(#glow)" opacity="0.9">PLUS</text>
+      <text x="80" y="115" font-size="130" fill="url(#plusGradient)" stroke="#111" stroke-width="6">PLUS</text>
+      <text x="76" y="107" font-size="130" fill="none" stroke="#ffffff" stroke-width="1.5" opacity="0.4">PLUS</text>
+    </g>
+    
+    <!-- 底部标签 -->
+    <rect x="-10" y="145" width="180" height="3" rx="1.5" fill="url(#plusGradient)" opacity="0.7"/>
+    <text x="80" y="175" font-family="'Courier New', monospace" font-size="16" fill="#7b2ffc" text-anchor="middle" opacity="0.7" letter-spacing="3">ENHANCED</text>
+  </g>
+
+  <!-- ===== 装饰粒子 ===== -->
+  <circle cx="940" cy="150" r="4" fill="#00d4ff" opacity="0.6">
+    <animate attributeName="opacity" values="0.2;1;0.2" dur="2.8s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="150;140;150" dur="3s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="1280" cy="270" r="3" fill="#ff007f" opacity="0.5">
+    <animate attributeName="opacity" values="0.3;0.9;0.3" dur="3.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="1220" cy="200" r="5" fill="#7b2ffc" opacity="0.4">
+    <animate attributeName="opacity" values="0.1;0.7;0.1" dur="2.2s" repeatCount="indefinite"/>
+  </circle>
 </svg>
