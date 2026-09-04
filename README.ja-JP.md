@@ -53,6 +53,10 @@ node lib/cli.js modules
 node lib/cli.js serve --port 8787
 ```
 
+## OpenGUI-Plus 詳細チュートリアル
+
+10 個のモジュールを個別に学び、最後に複数モジュールを組み合わせる場合は、[📚 OpenGUI-Plus チュートリアルセンター](./tutorials/README.md)を参照してください。環境構築、CLI / コンソール、各モジュール、組み合わせワークフロー、トラブルシューティング、開発者向け拡張ガイドをまとめています。
+
 ## Demo
 
 <p align="center">
