@@ -6,6 +6,35 @@ English | [中文](README.zh.md)
 
 The plugin does not modify DeepSeek Harness and does not depend on CoreMateDesktop2, system Chrome, Python, or Hermes CLI. Chromium is installed on demand only after the first browser task receives user approval.
 
+## OpenGUI-Plus enhancement layer
+
+The `OpenGUI-Plus` enhancement layer lives in [`opengui-plus/`](./opengui-plus/). It is more than a rename: it adds a standalone DSH-plugin workbench beside the existing phone GUI agent. It leaves the upstream core untouched, persists configuration and execution records locally across sessions, and isolates data by project group.
+
+| Module | Main capabilities |
+|---|---|
+| **Wireless debugging** `wlan-connection` | USB / WiFi / auto-connect, remembered devices, live status, Android 11+ pairing |
+| **Snippet library** `snippet-library` | Command aliases, tags, autocomplete, JSON import/export |
+| **Action templates** `action-template` | Multi-step recording, `{{variables}}`, parameterized one-click execution |
+| **Scheduler** `scheduler` | One-shot / daily / weekly / Cron jobs for snippets, templates, and flows |
+| **Project and action groups** `project-group` | Switch a complete set of devices, templates, snippets, and schedules |
+| **AI demo recorder** `demo-recorder` | Capture canonical operations and AI decisions, revise demonstrations, convert to templates |
+| **Workflow marketplace** `workflow-marketplace` | Browse, rate, install, publish, import/export, and run `.opengui-workflow` files |
+| **Human-feedback RL** `feedback-rl` | Turn judgments and reasons into an experience base; retrieve lessons and track success rate |
+| **Multi-device pool** `device-pool` | Device groups, queues, priorities, concurrency limits, load balancing, auto-assignment |
+| **Execution replay** `replay` | Frame-by-frame actions / screenshots / AI decisions / anomaly recovery; HTML / JSON export |
+
+Quick start for the enhancement layer:
+
+```sh
+cd deepseek-harness-plugin/opengui-plus
+npm install
+npm run build
+node lib/cli.js modules
+node lib/cli.js serve --port 8787
+```
+
+See [`docs/OPENGUI-PLUS.md`](../docs/OPENGUI-PLUS.md) for the complete feature reference and command examples.
+
 ## Codex plugin
 
 The same source directory is also a Codex plugin named `opengui`. Its repo marketplace entry is [`../.agents/plugins/marketplace.json`](../.agents/plugins/marketplace.json), and its local stdio MCP exposes these interfaces:
