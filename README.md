@@ -25,6 +25,10 @@
 </p>
 
 <p align="center">
+  <strong>⚡ This is the <a href="./docs/OPENGUI-PLUS.md">OpenGUI-Plus</a> enhanced fork</strong> — 10 decoupled DSH-plugin modules (wireless debugging, snippet library, action templates, scheduler, project groups, demo recording, workflow marketplace, feedback RL, device pool, execution replay) layered on top of OpenGUI <em>without modifying the upstream core</em>. See <a href="./docs/OPENGUI-PLUS.md">the enhanced-edition docs</a>.
+</p>
+
+<p align="center">
   <strong>Recommended: use OpenGUI directly in DeepSeek Harness.</strong><br>
   Paste one prompt into Codex. It downloads the verified plugin, installs it into DSH, and opens DSH. No full backend deployment is required.
 </p>

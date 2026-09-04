@@ -1,0 +1,6 @@
+node_modules/
+lib/
+*.tsbuildinfo
+.DS_Store
+# Local data written by `opengui-plus serve`; never commit device IPs or tokens.
+.opengui-plus/

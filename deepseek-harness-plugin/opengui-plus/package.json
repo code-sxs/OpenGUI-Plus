@@ -1,0 +1,68 @@
+{
+  "name": "dsh-opengui-plus",
+  "version": "0.1.0",
+  "description": "OpenGUI-Plus: ten decoupled DSH plugin modules layered on top of OpenGUI (wireless debugging, snippet library, action templates, scheduler, project groups, demo recording, workflow marketplace, feedback RL, device pool, execution replay).",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/code-sxs/OpenGUI-Plus.git",
+    "directory": "deepseek-harness-plugin/opengui-plus"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "bin": {
+    "opengui-plus": "lib/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    ".codex-plugin",
+    "docs",
+    "lib",
+    "web"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node lib/cli.js serve",
+    "cli": "node lib/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run build"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "license": "MIT",
+  "keywords": [
+    "opengui",
+    "opengui-plus",
+    "android",
+    "adb",
+    "dsh",
+    "automation",
+    "workflow",
+    "device-farm"
+  ],
+  "dsh": {
+    "bundle": {
+      "optional": true
+    },
+    "peerOptional": true
+  },
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/code-sxs/OpenGUI-Plus/issues"
+  },
+  "homepage": "https://github.com/code-sxs/OpenGUI-Plus#readme",
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

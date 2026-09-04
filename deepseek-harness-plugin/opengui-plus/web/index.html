@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenGUI-Plus 控制台</title>
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --surface: #ffffff;
+    --surface-soft: #f8faff;
+    --border: #e3e8f2;
+    --text: #1b2130;
+    --muted: #6c7690;
+    --accent: #4f46e5;
+    --accent-soft: #eef0ff;
+    --green: #12a150;
+    --amber: #d98008;
+    --red: #d92d20;
+    --radius: 16px;
+    --shadow: 0 10px 30px rgba(24, 35, 71, 0.08);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: linear-gradient(160deg, #eef1fb 0%, #f7f9fd 45%, #f4f6fb 100%);
+    color: var(--text);
+    font: 14px/1.6 "PingFang SC", "Microsoft YaHei", -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+
+  .shell { display: grid; grid-template-columns: 232px 1fr; height: 100vh; }
+
+  /* ---------- sidebar ---------- */
+  aside {
+    background: rgba(255,255,255,0.82);
+    backdrop-filter: blur(14px);
+    border-right: 1px solid var(--border);
+    padding: 18px 14px;
+    overflow-y: auto;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 16px; }
+  .brand-mark {
+    width: 34px; height: 34px; border-radius: 11px; flex: none;
+    background: linear-gradient(140deg, #6d5efc, #4f46e5 55%, #7c3aed);
+    box-shadow: 0 6px 16px rgba(79,70,229,.35);
+    display: grid; place-items: center; color: #fff; font-weight: 700;
+  }
+  .brand h1 { font-size: 15px; margin: 0; letter-spacing: .2px; }
+  .brand small { display: block; color: var(--muted); font-size: 11px; font-weight: 400; }
+
+  .nav-group { font-size: 11px; color: var(--muted); padding: 12px 10px 6px; letter-spacing: .6px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    padding: 9px 11px; margin-bottom: 3px; border: 0; border-radius: 11px;
+    background: transparent; cursor: pointer; text-align: left; font-size: 13px;
+    transition: background .15s, color .15s;
+  }
+  .nav-item:hover { background: var(--surface-soft); }
+  .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .nav-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); flex: none; }
+  .nav-item.healthy .dot { background: var(--green); }
+  .nav-item.broken .dot { background: var(--amber); }
+
+  /* ---------- main ---------- */
+  main { display: flex; flex-direction: column; min-width: 0; }
+  header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 14px 22px; border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.72); backdrop-filter: blur(14px);
+  }
+  header h2 { margin: 0; font-size: 16px; }
+  header .spacer { flex: 1; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 999px; font-size: 12px;
+    background: var(--surface); border: 1px solid var(--border);
+  }
+  .pill b { font-weight: 600; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status-dot.on { background: var(--green); box-shadow: 0 0 0 3px rgba(18,161,80,.16); }
+  .status-dot.off { background: var(--red); }
+  .status-dot.warn { background: var(--amber); }
+
+  select.project, .btn, input, textarea, select {
+    border: 1px solid var(--border); border-radius: 10px; padding: 7px 11px;
+    background: var(--surface); outline: none;
+  }
+  select.project { min-width: 190px; }
+  .btn {
+    cursor: pointer; background: var(--surface); font-weight: 500;
+    transition: transform .08s, box-shadow .15s, background .15s;
+  }
+  .btn:hover { box-shadow: 0 4px 12px rgba(24,35,71,.10); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: linear-gradient(140deg,#6d5efc,#4f46e5); border-color: transparent; color: #fff; }
+  .btn.ghost { background: transparent; }
+  .btn.danger { color: var(--red); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  .content { flex: 1; overflow-y: auto; padding: 20px 22px 40px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); align-items: start; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px;
+  }
+  .card h3 { margin: 0 0 4px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .card h3 .spacer { flex: 1; }
+  .card p.hint { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+
+  .fields { display: grid; gap: 9px; margin-bottom: 12px; }
+  .field { display: grid; gap: 4px; }
+  .field label { font-size: 12px; color: var(--muted); }
+  .field input, .field select, .field textarea { width: 100%; }
+  .field textarea { min-height: 74px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  pre.output {
+    margin: 10px 0 0; padding: 12px; border-radius: 12px; max-height: 340px; overflow: auto;
+    background: #101828; color: #d7e0f5; font-size: 12px; line-height: 1.55;
+    font-family: ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word;
+  }
+  pre.output.error { background: #3a1414; color: #ffd9d9; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 11.5px; }
+  tbody tr:hover { background: var(--surface-soft); }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; margin-right: 4px; }
+  .muted { color: var(--muted); }
+  .empty { color: var(--muted); font-size: 12.5px; padding: 10px 0; }
+
+  .log { max-height: 220px; overflow-y: auto; font-size: 12px; }
+  .log div { padding: 4px 0; border-bottom: 1px dashed var(--border); }
+  .log .t { color: var(--muted); margin-right: 8px; }
+
+  .toast {
+    position: fixed; right: 20px; bottom: 20px; z-index: 50;
+    display: grid; gap: 8px; max-width: 380px;
+  }
+  .toast div {
+    background: #101828; color: #fff; padding: 10px 14px; border-radius: 12px;
+    box-shadow: 0 10px 26px rgba(16,24,40,.28); font-size: 12.5px;
+  }
+  .toast div.err { background: #7a1414; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside>
+    <div class="brand">
+      <div class="brand-mark">+</div>
+      <div>
+        <h1>OpenGUI-Plus</h1>
+        <small>OpenGUI 增强版控制台</small>
+      </div>
+    </div>
+    <div id="nav"></div>
+  </aside>
+
+  <main>
+    <header>
+      <h2 id="panel-title">概览</h2>
+      <div class="spacer"></div>
+      <span class="pill"><span class="status-dot" id="conn-dot"></span><b id="conn-text">未连接</b></span>
+      <span class="pill">项目 <b><select class="project" id="project-select"></select></b></span>
+      <span class="pill"><span class="status-dot" id="sse-dot"></span>实时事件</span>
+      <button class="btn ghost" id="btn-new-project">新建项目组</button>
+    </header>
+    <div class="content" id="content"></div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   OpenGUI-Plus console.
+   Every panel below is data-driven: `views` render JSON straight from a
+   module method, `actions` render a form that posts to the same method.
+   ============================================================ */
+
+const PANELS = [
+  {
+    id: 'wlan-connection', title: '模块一 · 无线调试连接',
+    hint: 'USB / WiFi / 自动三种模式。WiFi 设备信息会记住，下次启动自动加载。',
+    views: [
+      { label: '连接状态', target: 'wlan-connection.status' },
+      { label: '已保存设备', target: 'wlan-connection.listDevices' },
+      { label: '探测在线设备', target: 'wlan-connection.discover' },
+    ],
+    actions: [
+      { label: '设置连接模式', target: 'wlan-connection.setMode',
+        fields: [ { name:'mode', label:'模式', type:'select', options:['auto','usb','wifi'], value:'auto' },
+                  { name:'autoConnect', label:'启动时自动连接', type:'checkbox', value:true } ] },
+      { label: '保存 WiFi 设备', target: 'wlan-connection.saveDevice',
+        fields: [ { name:'transport', type:'hidden', value:'wifi' },
+                  { name:'host', label:'设备 IP', placeholder:'192.168.1.23', required:true },
+                  { name:'port', label:'端口', type:'number', value:5555 },
+                  { name:'name', label:'备注名', placeholder:'小米 9' } ] },
+      { label: '连接', target: 'wlan-connection.connect',
+        fields: [ { name:'mode', label:'模式（留空用当前设置）', type:'select', options:['','auto','usb','wifi'], value:'' } ] },
+      { label: '断开', target: 'wlan-connection.disconnect', fields: [] },
+      { label: '无线配对（Android 11+）', target: 'wlan-connection.pair',
+        fields: [ { name:'host', label:'配对 IP', required:true }, { name:'port', label:'配对端口', type:'number', required:true },
+                  { name:'code', label:'配对码', required:true } ] },
+      { label: '切换到 TCP/IP（需先插线）', target: 'wlan-connection.enableTcpip',
+        fields: [ { name:'serial', label:'序列号（可选）' }, { name:'port', label:'端口', type:'number', value:5555 } ] },
+    ],
+  },
+  {
+    id: 'snippet-library', title: '模块二 · 快捷指令库',
+    hint: '给常用指令起别名，输入别名即可补全，支持按标签分类与 JSON 导入导出。',
+    views: [
+      { label: '全部指令', target: 'snippet-library.list' },
+      { label: '标签概览', target: 'snippet-library.listTags' },
+    ],
+    actions: [
+      { label: '按别名补全', target: 'snippet-library.complete', fields: [ { name:'prefix', label:'前缀', placeholder:'sc' } ] },
+      { label: '解析别名', target: 'snippet-library.resolve', fields: [ { name:'alias', label:'别名', placeholder:'sc', required:true } ] },
+      { label: '保存指令', target: 'snippet-library.save',
+        fields: [ { name:'alias', label:'别名（不含空格）', placeholder:'sc', required:true },
+                  { name:'command', label:'完整指令', placeholder:'截屏并返回当前界面', required:true },
+                  { name:'tags', label:'标签（逗号分隔）', placeholder:'调试,UI检查' },
+                  { name:'description', label:'说明' } ] },
+      { label: '删除指令', target: 'snippet-library.remove', fields: [ { name:'id', label:'指令 id', required:true } ] },
+      { label: '导出 JSON', target: 'snippet-library.exportJson', fields: [] },
+      { label: '导入 JSON', target: 'snippet-library.importJson',
+        fields: [ { name:'payload', label:'JSON 文本', type:'textarea', required:true, placeholder:'{"version":1,"snippets":[...]}' },
+                  { name:'mode', label:'模式', type:'select', options:['merge','replace'], value:'merge' } ] },
+    ],
+  },
+  {
+    id: 'action-template', title: '模块三 · 动作模板录制',
+    hint: '把一串操作录成模板，之后一键执行；参数用 {{变量名}} 占位。',
+    views: [
+      { label: '模板列表', target: 'action-template.list' },
+    ],
+    actions: [
+      { label: '开始录制', target: 'action-template.startRecording',
+        fields: [ { name:'name', label:'模板名', placeholder:'打开设置并截屏', required:true },
+                  { name:'description', label:'说明' } ] },
+      { label: '录制一步', target: 'action-template.recordStep',
+        fields: [ { name:'recordingId', label:'录制会话 id', required:true },
+                  { name:'type', label:'步骤类型', type:'select',
+                    options:['connect','launch','shell','tap','swipe','input','screenshot','wait','snippet','disconnect'], value:'launch' },
+                  { name:'params', label:'参数（JSON）', type:'textarea', placeholder:'{"package":"com.android.settings"}' },
+                  { name:'note', label:'备注' } ] },
+      { label: '结束录制并保存', target: 'action-template.stopRecording',
+        fields: [ { name:'recordingId', label:'录制会话 id', required:true } ] },
+      { label: '执行模板', target: 'action-template.execute',
+        fields: [ { name:'id', label:'模板 id', required:true },
+                  { name:'variables', label:'变量（JSON）', type:'textarea', placeholder:'{"package":"com.android.settings"}' } ] },
+      { label: '删除模板', target: 'action-template.remove', fields: [ { name:'id', label:'模板 id', required:true } ] },
+    ],
+  },
+  {
+    id: 'scheduler', title: '模块四 · 定时任务',
+    hint: '单次 / 每天 / 每周 / 自定义 Cron。可执行快捷指令、动作模板或完整流程。',
+    views: [
+      { label: '任务列表', target: 'scheduler.list' },
+      { label: '即将执行', target: 'scheduler.nextRuns', input: { limit: 10 } },
+      { label: '执行日志', target: 'scheduler.runLogs' },
+    ],
+    actions: [
+      { label: '新建任务', target: 'scheduler.create',
+        fields: [ { name:'name', label:'任务名', required:true, placeholder:'每日凌晨构建测试' },
+                  { name:'schedule', label:'调度（JSON）', type:'textarea', required:true,
+                    placeholder:'{"kind":"daily","at":"02:00"}' },
+                  { name:'target', label:'目标（JSON）', type:'textarea', required:true,
+                    placeholder:'{"type":"template","templateId":"tpl_xxx"}' },
+                  { name:'enabled', label:'立即启用', type:'checkbox', value:true } ] },
+      { label: '立即执行', target: 'scheduler.runNow', fields: [ { name:'id', label:'任务 id', required:true } ] },
+      { label: '启用', target: 'scheduler.enable', fields: [ { name:'id', label:'任务 id', required:true } ] },
+      { label: '停用', target: 'scheduler.disable', fields: [ { name:'id', label:'任务 id', required:true } ] },
+      { label: '删除任务', target: 'scheduler.remove', fields: [ { name:'id', label:'任务 id', required:true } ] },
+    ],
+  },
+  {
+    id: 'project-group', title: '模块五 · 项目组管理',
+    hint: '一个 App 一套配置：设备、指令库、模板、定时任务。切换项目组即切换全套数据。',
+    views: [
+      { label: '项目组列表', target: 'project-group.list' },
+      { label: '当前项目组', target: 'project-group.current' },
+    ],
+    actions: [
+      { label: '新建项目组', target: 'project-group.create',
+        fields: [ { name:'name', label:'名称', required:true, placeholder:'抖音项目' },
+                  { name:'description', label:'说明' },
+                  { name:'tags', label:'标签（逗号分隔）' } ] },
+      { label: '切换项目组', target: 'project-group.switch', fields: [ { name:'id', label:'项目组 id', required:true } ] },
+      { label: '复制项目组（含全部配置）', target: 'project-group.duplicate',
+        fields: [ { name:'id', label:'源项目组 id', required:true }, { name:'name', label:'新名称' } ] },
+      { label: '导出项目组', target: 'project-group.export', fields: [ { name:'id', label:'项目组 id', required:true } ] },
+      { label: '导入项目组', target: 'project-group.import',
+        fields: [ { name:'payload', label:'项目包 JSON', type:'textarea', required:true } ] },
+      { label: '删除项目组', target: 'project-group.remove', fields: [ { name:'id', label:'项目组 id', required:true } ] },
+    ],
+  },
+  {
+    id: 'demo-recorder', title: '模块六 · 演示录制与教学',
+    hint: '手动做一遍，系统记录操作序列与页面状态，可转成模板；支持事后修正示范。',
+    views: [
+      { label: '录制列表', target: 'demo-recorder.listDemos' },
+    ],
+    actions: [
+      { label: '开始演示录制', target: 'demo-recorder.startDemo',
+        fields: [ { name:'name', label:'录制名', required:true }, { name:'description', label:'说明' } ] },
+      { label: '采集一步', target: 'demo-recorder.captureStep',
+        fields: [ { name:'recordingId', label:'录制 id', required:true },
+                  { name:'action', label:'动作', placeholder:'tap', required:true },
+                  { name:'params', label:'参数（JSON）', type:'textarea', placeholder:'{"x":500,"y":1200}' },
+                  { name:'captureScreen', label:'同时抓页面状态', type:'checkbox', value:true },
+                  { name:'note', label:'备注' } ] },
+      { label: '结束录制', target: 'demo-recorder.stopDemo', fields: [ { name:'recordingId', label:'录制 id', required:true } ] },
+      { label: '修正示范', target: 'demo-recorder.revise',
+        fields: [ { name:'id', label:'录制 id', required:true },
+                  { name:'steps', label:'修正后的步骤（JSON 数组）', type:'textarea', required:true, placeholder:'[{"action":"tap","params":{"x":1}}]' },
+                  { name:'note', label:'修正说明' } ] },
+      { label: '转为动作模板', target: 'demo-recorder.toTemplate', fields: [ { name:'id', label:'录制 id', required:true } ] },
+    ],
+  },
+  {
+    id: 'workflow-marketplace', title: '模块七 · 工作流模板市场',
+    hint: '标准 .opengui-workflow 格式，分类浏览、一键安装、评分与导入导出。',
+    views: [
+      { label: '市场分类', target: 'workflow-marketplace.categories' },
+      { label: '浏览模板', target: 'workflow-marketplace.browse' },
+      { label: '已安装', target: 'workflow-marketplace.listInstalled' },
+    ],
+    actions: [
+      { label: '按分类浏览', target: 'workflow-marketplace.browse',
+        fields: [ { name:'category', label:'分类', type:'select',
+                    options:['','social-operations','app-testing','auto-checkin','data-collection','other'], value:'' },
+                  { name:'query', label:'关键词' },
+                  { name:'sort', label:'排序', type:'select', options:['downloads','rating','recent'], value:'downloads' } ] },
+      { label: '安装模板', target: 'workflow-marketplace.install', fields: [ { name:'id', label:'模板 id', required:true } ] },
+      { label: '运行模板', target: 'workflow-marketplace.run',
+        fields: [ { name:'id', label:'模板 id', required:true },
+                  { name:'variables', label:'变量（JSON）', type:'textarea', placeholder:'{"account":"xxx"}' } ] },
+      { label: '评分', target: 'workflow-marketplace.rate',
+        fields: [ { name:'id', label:'模板 id', required:true },
+                  { name:'score', label:'分数 1-5', type:'number', required:true },
+                  { name:'comment', label:'评语' } ] },
+      { label: '导入 .opengui-workflow', target: 'workflow-marketplace.importWorkflow',
+        fields: [ { name:'json', label:'模板 JSON', type:'textarea', required:true } ] },
+      { label: '导出选中模板', target: 'workflow-marketplace.exportWorkflow', fields: [ { name:'id', label:'模板 id', required:true } ] },
+    ],
+  },
+  {
+    id: 'feedback-rl', title: '模块八 · 反馈强化学习回路',
+    hint: '给每次执行打分，系统沉淀失败经验；下次遇到相似症状自动检索历史解法。',
+    views: [
+      { label: '统计概览', target: 'feedback-rl.summary' },
+      { label: '反馈记录', target: 'feedback-rl.listRecords' },
+      { label: '经验知识库', target: 'feedback-rl.listExperiences' },
+    ],
+    actions: [
+      { label: '记录评价', target: 'feedback-rl.record',
+        fields: [ { name:'taskLabel', label:'任务标识', required:true, placeholder:'template:tpl_xxx' },
+                  { name:'outcome', label:'结果', type:'select', options:['success','partial','failure'], value:'success' },
+                  { name:'symptom', label:'失败症状', placeholder:'弹窗未关闭导致中断' },
+                  { name:'step', label:'卡在哪一步' },
+                  { name:'resolution', label:'解决办法', placeholder:'先点击关闭按钮再继续' },
+                  { name:'comment', label:'备注' } ] },
+      { label: '检索历史经验', target: 'feedback-rl.queryRelevant',
+        fields: [ { name:'symptom', label:'当前症状', required:true, placeholder:'弹窗未关闭' } ] },
+      { label: '标记经验已应用', target: 'feedback-rl.markApplied',
+        fields: [ { name:'experienceId', label:'经验 id', required:true },
+                  { name:'worked', label:'是否奏效', type:'checkbox', value:true } ] },
+      { label: '查看任务成功率', target: 'feedback-rl.successRate',
+        fields: [ { name:'taskLabel', label:'任务标识', required:true } ] },
+    ],
+  },
+  {
+    id: 'device-pool', title: '模块九 · 多机协同与设备池',
+    hint: 'USB + WiFi 混合管理，标签分组，任务队列带优先级与并发上限，自动负载均衡。',
+    views: [
+      { label: '设备池概览', target: 'device-pool.status' },
+      { label: '设备列表', target: 'device-pool.list' },
+      { label: '分组', target: 'device-pool.listGroups' },
+    ],
+    actions: [
+      { label: '注册设备', target: 'device-pool.register',
+        fields: [ { name:'name', label:'设备名', required:true },
+                  { name:'serial', label:'序列号或 host:port', required:true },
+                  { name:'transport', label:'连接方式', type:'select', options:['usb','wifi'], value:'usb' },
+                  { name:'groups', label:'分组（逗号分隔）', placeholder:'测试机,小米' },
+                  { name:'maxConcurrency', label:'最大并发', type:'number', value:1 },
+                  { name:'priority', label:'优先级', type:'number', value:0 } ] },
+      { label: '刷新在线状态', target: 'device-pool.refresh', fields: [] },
+      { label: '入队任务', target: 'device-pool.enqueue',
+        fields: [ { name:'payload', label:'任务内容（JSON）', type:'textarea', required:true,
+                    placeholder:'{"type":"template","templateId":"tpl_xxx"}' },
+                  { name:'priority', label:'优先级', type:'number', value:0 },
+                  { name:'groupFilter', label:'限定分组' } ] },
+      { label: '分配到空闲设备', target: 'device-pool.assign', fields: [ { name:'taskId', label:'任务 id（留空取队首）' } ] },
+      { label: '自动分配全部', target: 'device-pool.autoAssign', fields: [] },
+      { label: '标记任务完成', target: 'device-pool.complete',
+        fields: [ { name:'taskId', label:'任务 id', required:true }, { name:'ok', label:'是否成功', type:'checkbox', value:true } ] },
+    ],
+  },
+  {
+    id: 'replay', title: '模块十 · 执行可视化回放',
+    hint: '逐帧记录动作、AI 决策理由与异常恢复，结束后导出可分享的单文件 HTML 回放。',
+    views: [
+      { label: '回放列表', target: 'replay.listReplays' },
+    ],
+    actions: [
+      { label: '开始录制', target: 'replay.startRecording',
+        fields: [ { name:'name', label:'录制名', required:true }, { name:'taskLabel', label:'关联任务' } ] },
+      { label: '记录一帧', target: 'replay.markFrame',
+        fields: [ { name:'sessionId', label:'会话 id', required:true },
+                  { name:'action', label:'动作' },
+                  { name:'decision', label:'AI 决策理由', placeholder:'检测到登录按钮，点击以继续' },
+                  { name:'anomaly', label:'异常（JSON）', type:'textarea', placeholder:'{"symptom":"弹窗遮挡","recovery":"关闭弹窗"}' },
+                  { name:'detail', label:'详情' },
+                  { name:'captureScreenshot', label:'抓截图', type:'checkbox', value:true } ] },
+      { label: '结束录制', target: 'replay.stopRecording', fields: [ { name:'sessionId', label:'会话 id', required:true } ] },
+      { label: '查看回放', target: 'replay.getReplay', fields: [ { name:'id', label:'会话 id', required:true } ] },
+      { label: '导出回放', target: 'replay.exportReplay',
+        fields: [ { name:'id', label:'会话 id', required:true },
+                  { name:'format', label:'格式', type:'select', options:['html','json'], value:'html' } ] },
+      { label: '统计', target: 'replay.stats', fields: [ { name:'id', label:'会话 id', required:true } ] },
+    ],
+  },
+];
+
+let state = { panel: 'overview', modules: [], projects: [], currentProject: null, events: [] };
+
+/* ---------------- helpers ---------------- */
+
+async function api(path, options = {}) {
+  const response = await fetch(path, options);
+  const text = await response.text();
+  try { return JSON.parse(text); }
+  catch { return { ok: false, error: text.slice(0, 400) }; }
+}
+
+async function call(target, input = {}) {
+  const result = await api('/api/call', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ target, input }),
+  });
+  if (!result.ok) toast(`${target} 失败：${result.error}`, true);
+  return result;
+}
+
+function toast(message, isError = false) {
+  const box = document.getElementById('toast');
+  const node = document.createElement('div');
+  if (isError) node.className = 'err';
+  node.textContent = message;
+  box.appendChild(node);
+  setTimeout(() => node.remove(), isError ? 6000 : 3200);
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, ch => (
+    { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]
+  ));
+}
+
+function pretty(value) {
+  return escapeHtml(JSON.stringify(value, null, 2));
+}
+
+/** Render a JSON payload; arrays of records become tables when they look tabular. */
+function renderResult(value) {
+  if (value === null || value === undefined) return '<p class="empty">无数据</p>';
+  if (Array.isArray(value)) return renderTable(value);
+  if (typeof value === 'object') {
+    const arrays = Object.entries(value).filter(([, v]) => Array.isArray(v));
+    if (arrays.length === 1 && arrays[0][1].length > 0) {
+      const [key, rows] = arrays[0];
+      const head = `<p class="hint">字段 ${escapeHtml(key)} 共 ${rows.length} 条</p>`;
+      return head + renderTable(rows);
+    }
+  }
+  return `<pre class="output">${pretty(value)}</pre>`;
+}
+
+function renderTable(rows) {
+  if (rows.length === 0) return '<p class="empty">暂无记录</p>';
+  const keys = [...new Set(rows.flatMap(row => (row && typeof row === 'object' ? Object.keys(row) : [])))].slice(0, 8);
+  if (keys.length === 0) return `<pre class="output">${pretty(rows)}</pre>`;
+  const head = keys.map(key => `<th>${escapeHtml(key)}</th>`).join('');
+  const body = rows.slice(0, 60).map(row => {
+    const cells = keys.map((key) => {
+      const cell = row?.[key];
+      const text = cell === null || cell === undefined ? ''
+        : typeof cell === 'object' ? JSON.stringify(cell) : String(cell);
+      return `<td>${escapeHtml(text.length > 120 ? `${text.slice(0, 120)}…` : text)}</td>`;
+    }).join('');
+    return `<tr>${cells}</tr>`;
+  }).join('');
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
+    + (rows.length > 60 ? `<p class="hint">仅显示前 60 条，共 ${rows.length} 条</p>` : '');
+}
+
+/* ---------------- navigation ---------------- */
+
+function renderNav() {
+  const nav = document.getElementById('nav');
+  const overview = `<button class="nav-item ${state.panel === 'overview' ? 'active' : ''}" data-panel="overview">
+      <span class="dot"></span>概览</button>`;
+  const items = PANELS.map((panel) => {
+    const status = state.modules.find(module => module.id === panel.id);
+    const healthy = status?.started ? 'healthy' : 'broken';
+    return `<button class="nav-item ${state.panel === panel.id ? 'active' : ''} ${healthy}" data-panel="${panel.id}">
+      <span class="dot"></span>${escapeHtml(panel.title)}</button>`;
+  }).join('');
+  nav.innerHTML = `<div class="nav-group">总览</div>${overview}<div class="nav-group">功能模块</div>${items}`;
+  nav.querySelectorAll('.nav-item').forEach((button) => {
+    button.addEventListener('click', () => { state.panel = button.dataset.panel; render(); });
+  });
+}
+
+/* ---------------- panels ---------------- */
+
+function renderOverview() {
+  const cards = state.modules.map((module) => {
+    const dot = module.started ? 'on' : 'off';
+    return `<div class="card">
+      <h3><span class="status-dot ${dot}"></span>${escapeHtml(module.name)}
+        <span class="spacer"></span><span class="tag">${escapeHtml(module.id)}</span></h3>
+      <p class="hint">${escapeHtml(module.summary)}</p>
+      <p class="muted" style="font-size:12px">${module.methods.length} 个方法 · ${escapeHtml(module.health?.detail ?? '')}</p>
+    </div>`;
+  }).join('');
+
+  const log = state.events.slice(-25).reverse().map((event) => {
+    const time = String(event.at ?? '').slice(11, 19);
+    return `<div><span class="t">${escapeHtml(time)}</span>
+      <b>${escapeHtml(event.source ?? '')}</b> ${escapeHtml(event.type ?? '')}</div>`;
+  }).join('') || '<p class="empty">暂无事件</p>';
+
+  return `<div class="grid">
+      <div class="card">
+        <h3>运行状态</h3>
+        <p class="hint">共 ${state.modules.length} 个模块，其中 ${state.modules.filter(m => m.started).length} 个已启动。</p>
+        <p class="muted" style="font-size:12px">当前项目组：<b>${escapeHtml(state.currentProject ?? 'default')}</b></p>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" id="ov-refresh">刷新</button>
+          <button class="btn" id="ov-events">拉取最近事件</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>实时事件</h3>
+        <p class="hint">模块状态变化、任务执行、设备变更都会出现在这里。</p>
+        <div class="log">${log}</div>
+      </div>
+    </div>
+    <div class="grid" style="margin-top:16px">${cards}</div>`;
+}
+
+function renderPanel(panel) {
+  const views = panel.views.map((view, index) => `
+    <div class="card" data-view="${panel.id}-${index}">
+      <h3>${escapeHtml(view.label)}<span class="spacer"></span>
+        <button class="btn ghost" data-refresh="${panel.id}-${index}">刷新</button></h3>
+      <p class="hint"><code>${escapeHtml(view.target)}</code></p>
+      <div class="out"><p class="empty">点击“刷新”加载</p></div>
+    </div>`).join('');
+
+  const actions = panel.actions.map((action, index) => {
+    const fields = (action.fields ?? []).map((field) => {
+      if (field.type === 'hidden') return `<input type="hidden" name="${field.name}" value="${escapeHtml(field.value ?? '')}">`;
+      const id = `f-${panel.id}-${index}-${field.name}`;
+      let control;
+      if (field.type === 'select') {
+        control = `<select id="${id}" name="${field.name}">${field.options.map(option =>
+          `<option value="${escapeHtml(option)}" ${String(option) === String(field.value ?? '') ? 'selected' : ''}>${escapeHtml(option || '（留空）')}</option>`).join('')}</select>`;
+      } else if (field.type === 'textarea') {
+        control = `<textarea id="${id}" name="${field.name}" placeholder="${escapeHtml(field.placeholder ?? '')}"></textarea>`;
+      } else if (field.type === 'checkbox') {
+        control = `<input type="checkbox" id="${id}" name="${field.name}" ${field.value ? 'checked' : ''}>`;
+      } else {
+        control = `<input type="${field.type === 'number' ? 'number' : 'text'}" id="${id}" name="${field.name}"
+          placeholder="${escapeHtml(field.placeholder ?? '')}" value="${escapeHtml(field.value ?? '')}">`;
+      }
+      return `<div class="field"><label for="${id}">${escapeHtml(field.label ?? field.name)}${field.required ? ' *' : ''}</label>${control}</div>`;
+    }).join('');
+
+    return `<div class="card" data-action="${panel.id}-${index}">
+      <h3>${escapeHtml(action.label)}</h3>
+      <p class="hint"><code>${escapeHtml(action.target)}</code></p>
+      <form>
+        <div class="fields">${fields}</div>
+        <div class="row">
+          <button type="submit" class="btn primary">执行</button>
+          <button type="button" class="btn ghost" data-clear="${panel.id}-${index}">清空</button>
+        </div>
+      </form>
+      <div class="out"></div>
+    </div>`;
+  }).join('');
+
+  return `<p class="hint" style="margin-bottom:14px">${escapeHtml(panel.hint)}</p>
+    <div class="grid">${views}</div>
+    <div class="grid" style="margin-top:16px">${actions}</div>`;
+}
+
+function render() {
+  renderNav();
+  const panel = PANELS.find(candidate => candidate.id === state.panel);
+  document.getElementById('panel-title').textContent = panel ? panel.title : '概览';
+  document.getElementById('content').innerHTML = panel ? renderPanel(panel) : renderOverview();
+  if (panel) bindPanel(panel);
+  else bindOverview();
+}
+
+/* ---------------- binding ---------------- */
+
+function collectInput(scope) {
+  const input = {};
+  scope.querySelectorAll('input, select, textarea').forEach((element) => {
+    if (!element.name) return;
+    if (element.type === 'checkbox') { input[element.name] = element.checked; return; }
+    const raw = element.value.trim();
+    if (raw.length === 0) return;
+    if (element.type === 'number') { input[element.name] = Number(raw); return; }
+    // JSON fields let you pass structured arguments straight through.
+    if ((element.tagName === 'TEXTAREA' || ['params','variables','payload','target','schedule','anomaly','steps','data','context']
+        .includes(element.name)) && (raw.startsWith('{') || raw.startsWith('['))) {
+      try { input[element.name] = JSON.parse(raw); return; }
+      catch { /* fall through to string; the module will report the error */ }
+    }
+    if (element.name === 'tags' || element.name === 'groups') {
+      input[element.name] = raw.split(/[,，]/).map(part => part.trim()).filter(Boolean);
+      return;
+    }
+    input[element.name] = raw;
+  });
+  return input;
+}
+
+function bindPanel(panel) {
+  panel.views.forEach((view, index) => {
+    const card = document.querySelector(`[data-view="${panel.id}-${index}"]`);
+    const out = card.querySelector('.out');
+    const load = async () => {
+      out.innerHTML = '<p class="empty">加载中…</p>';
+      const result = await call(view.target, view.input ?? {});
+      out.innerHTML = result.ok
+        ? renderResult(result.value)
+        : `<pre class="output error">${escapeHtml(result.error)}</pre>`;
+      if (view.target === 'wlan-connection.status') paintConnection(result.value);
+    };
+    card.querySelector('[data-refresh]').addEventListener('click', load);
+    load();
+  });
+
+  panel.actions.forEach((action, index) => {
+    const card = document.querySelector(`[data-action="${panel.id}-${index}"]`);
+    const out = card.querySelector('.out');
+    card.querySelector('form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const input = collectInput(card);
+      out.innerHTML = '<p class="empty">执行中…</p>';
+      const result = await call(action.target, input);
+      out.innerHTML = result.ok
+        ? renderResult(result.value)
+        : `<pre class="output error">${escapeHtml(result.error)}</pre>`;
+      if (action.target === 'project-group.create' || action.target === 'project-group.switch'
+          || action.target === 'project-group.remove' || action.target === 'project-group.import') {
+        await loadProjects();
+      }
+      if (action.target === 'wlan-connection.connect' || action.target === 'wlan-connection.status') {
+        const status = await call('wlan-connection.status');
+        if (status.ok) paintConnection(status.value);
+      }
+    });
+    card.querySelector('[data-clear]').addEventListener('click', () => {
+      card.querySelectorAll('input[type=text], input[type=number], textarea').forEach(el => { el.value = ''; });
+      out.innerHTML = '';
+    });
+  });
+}
+
+function bindOverview() {
+  document.getElementById('ov-refresh')?.addEventListener('click', () => bootstrap());
+  document.getElementById('ov-events')?.addEventListener('click', async () => {
+    const result = await api('/api/events/recent');
+    if (result.events) { state.events = result.events; render(); }
+  });
+}
+
+function paintConnection(status) {
+  if (!status || typeof status !== 'object') return;
+  const dot = document.getElementById('conn-dot');
+  const text = document.getElementById('conn-text');
+  const map = { connected: 'on', connecting: 'warn', disconnected: 'off', error: 'off' };
+  dot.className = `status-dot ${map[status.state] ?? 'off'}`;
+  text.textContent = `${status.state ?? 'unknown'} · ${status.mode ?? ''} · ${status.message ?? ''}`.replace(/\s+·\s*$/, '');
+}
+
+/* ---------------- boot ---------------- */
+
+async function loadProjects() {
+  const result = await call('project-group.list');
+  const rows = Array.isArray(result.value)
+    ? result.value
+    : (result.value && Array.isArray(result.value.projects) ? result.value.projects : []);
+  state.projects = rows;
+  const select = document.getElementById('project-select');
+  const current = state.currentProject;
+  select.innerHTML = rows.map(row =>
+    `<option value="${escapeHtml(row.id)}" ${row.id === current ? 'selected' : ''}>${escapeHtml(row.name)}</option>`).join('')
+    || '<option value="default">default</option>';
+}
+
+async function bootstrap() {
+  const status = await api('/api/status');
+  if (status.modules) state.modules = status.modules;
+  if (status.activeProjectId) state.currentProject = status.activeProjectId;
+  if (status.recentEvents) state.events = status.recentEvents;
+  await loadProjects();
+  const connection = await call('wlan-connection.status');
+  if (connection.ok) paintConnection(connection.value);
+  render();
+}
+
+document.getElementById('project-select').addEventListener('change', async (event) => {
+  const id = event.target.value;
+  const result = await call('project-group.switch', { id });
+  if (result.ok) {
+    state.currentProject = id;
+    toast(`已切换到项目组 ${id}`);
+    await bootstrap();
+  }
+});
+
+document.getElementById('btn-new-project').addEventListener('click', async () => {
+  const name = window.prompt('新项目组名称');
+  if (!name) return;
+  const result = await call('project-group.create', { name });
+  if (result.ok) {
+    toast('项目组已创建');
+    await bootstrap();
+  }
+});
+
+// Live events
+const source = new EventSource('/api/events');
+source.addEventListener('hello', () => { document.getElementById('sse-dot').className = 'status-dot on'; });
+source.addEventListener('plus', (event) => {
+  document.getElementById('sse-dot').className = 'status-dot on';
+  try {
+    const parsed = JSON.parse(event.data);
+    if (parsed && typeof parsed === 'object') {
+      state.events.push({ source: 'live', type: parsed.type, at: parsed.at });
+      if (state.events.length > 200) state.events.shift();
+      if (parsed.type === 'connection.state-changed') paintConnection(parsed.payload);
+      if (state.panel === 'overview') render();
+    }
+  } catch { /* ignore malformed frames */ }
+});
+source.onerror = () => { document.getElementById('sse-dot').className = 'status-dot off'; };
+
+bootstrap();
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+{
+  "name": "opengui-plus",
+  "version": "0.1.0",
+  "description": "OpenGUI-Plus adds ten decoupled modules on top of OpenGUI: wireless debugging, snippet library, action templates, scheduler, project groups, demo recording, workflow marketplace, feedback RL, device pool and execution replay.",
+  "author": {
+    "name": "OpenGUI-Plus contributors",
+    "url": "https://github.com/code-sxs/OpenGUI-Plus"
+  },
+  "homepage": "https://github.com/code-sxs/OpenGUI-Plus",
+  "repository": "https://github.com/code-sxs/OpenGUI-Plus/tree/main/deepseek-harness-plugin/opengui-plus",
+  "license": "MIT",
+  "keywords": [
+    "opengui",
+    "opengui-plus",
+    "android",
+    "adb",
+    "wireless-debugging",
+    "automation",
+    "workflow",
+    "device-farm"
+  ],
+  "interface": {
+    "displayName": "OpenGUI-Plus",
+    "shortDescription": "Ten workflow modules for OpenGUI",
+    "longDescription": "OpenGUI-Plus layers workflow tooling on top of OpenGUI without changing it: wireless (USB/WiFi/auto) device connection, a snippet library with aliases, recordable parameterised action templates, a cron scheduler, project groups that switch a whole configuration set at once, teach-by-demonstration recording, a .opengui-workflow template marketplace, a human-feedback experience loop, a multi-device pool with queueing and load balancing, and step-by-step execution replay.",
+    "developerName": "OpenGUI-Plus contributors",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/code-sxs/OpenGUI-Plus",
+    "defaultPrompt": [
+      "Show me the OpenGUI-Plus connection status and switch to WiFi debugging.",
+      "Run my recorded action template and fill in the package name.",
+      "Create a project group for this app and switch to it."
+    ],
+    "brandColor": "#4F46E5",
+    "screenshots": []
+  }
+}

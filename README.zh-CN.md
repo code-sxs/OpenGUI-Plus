@@ -24,6 +24,10 @@
 </p>
 
 <p align="center">
+  <strong>⚡ 这是 <a href="./docs/OPENGUI-PLUS.zh-CN.md">OpenGUI-Plus</a> 增强版</strong> —— 在 OpenGUI 之上以「解耦 DSH 插件」形式叠加 10 个模块（无线调试、快捷指令库、动作模板、定时任务、项目组、演示录制、工作流市场、反馈强化学习、设备池、执行回放），<em>不改动上游核心代码</em>。详见 <a href="./docs/OPENGUI-PLUS.zh-CN.md">增强版使用文档</a>。
+</p>
+
+<p align="center">
   <strong>推荐：直接在 DeepSeek Harness 中使用 OpenGUI。</strong><br>
   只需把一段话发给 Codex，它会下载并校验插件、安装到 DSH，再打开 DSH，不需要先部署完整后端。
 </p>
