@@ -33,6 +33,46 @@
   Paste one prompt into Codex. It downloads the verified plugin, installs it into DSH, and opens DSH. No full backend deployment is required.
 </p>
 
+## OpenGUI-Plus: What the Enhanced Edition Adds
+
+OpenGUI-Plus is more than a renamed fork. It adds a **standalone, persistent, composable DSH-plugin workbench** on top of the Android GUI Agent. All 10 modules live under `deepseek-harness-plugin/opengui-plus/`, communicate through a small module/event boundary, and leave the upstream OpenGUI core untouched.
+
+| # | Module | What you can do | Why it matters |
+|---|---|---|---|
+| 1 | **Wireless debugging** `wlan-connection` | Connect over USB, WiFi, or auto mode; save devices; inspect live status; pair Android 11+ devices | Stop re-entering endpoints and manually switching transports |
+| 2 | **Snippet library** `snippet-library` | Give long commands aliases, tags, and autocomplete; import/export JSON | Turn repetitive ADB / GUI commands into reusable, portable building blocks |
+| 3 | **Action templates** `action-template` | Record multi-step actions, extract `{{variables}}`, and run with parameters | Convert one-off manual work into repeatable automation |
+| 4 | **Scheduler** `scheduler` | Run one-shot, daily, weekly, or Cron jobs against snippets, templates, or flows | Automate inspections, batches, and recurring mobile operations |
+| 5 | **Project / action groups** `project-group` | Switch a complete set of devices, templates, snippets, and schedules; duplicate or import/export it | Keep client projects isolated and switch context in one action |
+| 6 | **AI demo recorder** `demo-recorder` | Record a canonical operation, capture AI decisions, revise the demonstration, and convert it to a template | Turn “how a human does it” into reusable AI teaching data |
+| 7 | **Workflow marketplace** `workflow-marketplace` | Browse, rate, install, publish, import/export `.opengui-workflow` files, and run workflows | Package and share workflows instead of rebuilding them per device |
+| 8 | **Human-feedback RL loop** `feedback-rl` | Record good/bad judgments and reasons, build an experience base, retrieve relevant lessons, track success rate | Make every human review useful to the next execution |
+| 9 | **Multi-device pool** `device-pool` | Register devices, group/tag them, set concurrency, queue and prioritize work, auto-assign idle devices | Scale batches without manually choosing a phone for every task |
+| 10 | **Execution replay** `replay` | Capture frames, screenshots, AI decisions, anomalies, and recovery; export standalone HTML / JSON | See exactly where a run failed and share the evidence |
+
+### One complete enhancement workflow
+
+```text
+Connect device → Save snippets → Record action template → Demonstrate/revise → Schedule or batch-run
+       ↑                                                               ↓
+Switch project ← Feedback experience base ← Replay failure ← Device pool ← Workflow marketplace
+```
+
+### See it in 30 seconds
+
+```bash
+cd deepseek-harness-plugin/opengui-plus
+npm install
+npm run build
+node lib/cli.js modules                       # list all 10 modules
+node lib/cli.js call wlan-connection.status   # inspect connection state
+node lib/cli.js call snippet-library.complete --prefix sc
+node lib/cli.js call replay.listReplays       # inspect execution replays
+node lib/cli.js serve --port 8787             # launch the visual console
+```
+
+The console puts all 10 modules in one page. Data is persisted under `~/.opengui-plus` by default, survives restarts, and is isolated per project group. See the [full OpenGUI-Plus guide](./docs/OPENGUI-PLUS.md) for every method, input, and example.
+
 ## Demo
 
 <p align="center">

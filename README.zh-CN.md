@@ -32,6 +32,46 @@
   只需把一段话发给 Codex，它会下载并校验插件、安装到 DSH，再打开 DSH，不需要先部署完整后端。
 </p>
 
+## OpenGUI-Plus 新增能力（重点）
+
+OpenGUI-Plus 不是只改了仓库名字：它在原有 Android GUI Agent 之上，新增了一套**可独立运行、可持久化、可组合的 DSH 插件工作台**。下面 10 个模块都位于 `deepseek-harness-plugin/opengui-plus/`，互相解耦，不修改上游 OpenGUI 核心代码。
+
+| # | 模块 | 你可以直接做什么 | 解决的实际问题 |
+|---|---|---|---|
+| 1 | **无线调试连接** `wlan-connection` | USB / WiFi / 自动连接，保存设备，查看实时状态，Android 11+ 配对 | 不再反复输入设备地址，也不用手动切换 USB 与无线调试 |
+| 2 | **快捷指令库** `snippet-library` | 给长指令设置别名、标签和自动补全，JSON 导入导出 | 常用 ADB / GUI 指令可复用、可迁移、可搜索 |
+| 3 | **动作模板录制** `action-template` | 录制多步动作，自动提取 `{{变量}}`，传参后一键执行 | 把一次性的手工操作变成可重复的自动化模板 |
+| 4 | **定时任务** `scheduler` | 单次、每天、每周、Cron 调度，执行指令 / 模板 / 流程并记录日志 | 巡检、批处理和周期性操作无需人工盯着 |
+| 5 | **动作组 / 项目组** `project-group` | 一键切换设备、模板、指令和调度的整套配置，支持复制和导入导出 | 工作项目之间不串配置，换项目不用逐项重配 |
+| 6 | **AI 演示与教学录制** `demo-recorder` | 录制标准操作、记录 AI 决策、修正示范、升级修订版本、转成模板 | 把“人怎么做”沉淀成 AI 可以复用的示范 |
+| 7 | **工作流模板市场** `workflow-marketplace` | 浏览、评分、安装、发布、导入导出 `.opengui-workflow`、一键运行 | 工作流可以打包分享，不必每台设备重新搭建 |
+| 8 | **人类反馈强化学习** `feedback-rl` | 记录正确 / 错误评价和原因，沉淀经验，按现象检索，统计成功率 | 每次人工复核都能变成下一次执行的参考经验 |
+| 9 | **多机设备池** `device-pool` | 注册多台设备，按标签分组，设置并发，任务排队、优先级和自动分配 | 批量任务不再手工挑设备，空闲设备自动接活 |
+| 10 | **执行可视化回放** `replay` | 逐帧记录动作、截图、AI 决策、异常恢复，导出单文件 HTML / JSON | 失败后能定位是哪一步出错，也能把执行过程分享给别人 |
+
+### 一条完整的增强工作流
+
+```text
+连接设备 → 保存快捷指令 → 录制动作模板 → 演示/修正 → 定时或批量执行
+    ↑                                                ↓
+项目组切换 ← 反馈经验库 ← 失败回放 ← 多机设备池 ← 工作流模板市场
+```
+
+### 30 秒看效果
+
+```bash
+cd deepseek-harness-plugin/opengui-plus
+npm install
+npm run build
+node lib/cli.js modules                       # 查看 10 个模块
+node lib/cli.js call wlan-connection.status   # 查看设备连接状态
+node lib/cli.js call snippet-library.complete --prefix sc
+node lib/cli.js call replay.listReplays       # 查看执行回放
+node lib/cli.js serve --port 8787             # 打开可视化控制台
+```
+
+控制台会把 10 个模块集中到一个页面；数据默认保存在 `~/.opengui-plus`，跨会话保留，并按项目组隔离。完整方法列表、参数和示例请看 [OpenGUI-Plus 增强版使用文档](./docs/OPENGUI-PLUS.zh-CN.md)。
+
 ## Demo
 
 <p align="center">

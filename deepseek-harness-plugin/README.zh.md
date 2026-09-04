@@ -8,6 +8,35 @@
 
 插件不会修改或发布 DeepSeek Harness 源码，也不依赖 CoreMateDesktop2、系统 Chrome、Python 或 Hermes CLI。仓库只包含插件源码、测试、发布元数据和随包 Android Debug Bridge（ADB）runtime；浏览器在首次实际需要时经用户确认后按需安装。
 
+## OpenGUI-Plus 增强插件层
+
+本仓库的 `OpenGUI-Plus` 增强层位于 [`opengui-plus/`](./opengui-plus/)，不是简单改名，而是在原有手机 GUI Agent 旁边提供一套可独立运行的 DSH 插件工作台。它不修改上游核心代码，所有配置和记录都保存在本地，可跨会话复用，并按项目组隔离。
+
+| 模块 | 主要功能 |
+|---|---|
+| **无线调试连接** `wlan-connection` | USB / WiFi / 自动连接、记住设备、实时状态、Android 11+ 配对 |
+| **快捷指令库** `snippet-library` | 指令别名、标签、自动补全、JSON 导入导出 |
+| **动作模板录制** `action-template` | 多步录制、`{{变量}}` 参数化、一键执行 |
+| **定时任务** `scheduler` | 单次 / 每天 / 每周 / Cron，执行指令、模板和流程 |
+| **动作组与项目组** `project-group` | 一键切换设备、模板、指令、调度等完整配置 |
+| **AI 演示录制** `demo-recorder` | 记录标准操作、AI 决策、修正示范并转成模板 |
+| **工作流模板市场** `workflow-marketplace` | `.opengui-workflow` 导入导出、浏览、评分、安装、发布、运行 |
+| **人类反馈强化学习** `feedback-rl` | 评价与原因沉淀为经验库，按现象检索并统计成功率 |
+| **多机设备池** `device-pool` | 设备分组、队列、优先级、并发限制、负载均衡、自动分配 |
+| **任务执行回放** `replay` | 逐帧动作 / 截图 / AI 决策 / 异常恢复记录，导出 HTML / JSON |
+
+快速启动增强控制台：
+
+```sh
+cd deepseek-harness-plugin/opengui-plus
+npm install
+npm run build
+node lib/cli.js modules
+node lib/cli.js serve --port 8787
+```
+
+完整功能说明和每个模块的命令示例见 [`docs/OPENGUI-PLUS.zh-CN.md`](../docs/OPENGUI-PLUS.zh-CN.md)。
+
 ## Codex Plugin
 
 同一源码目录现在也是名为 `opengui` 的 Codex Plugin。仓库 marketplace 位于 [`../.agents/plugins/marketplace.json`](../.agents/plugins/marketplace.json)，本地 stdio MCP 提供以下接口：

@@ -28,6 +28,31 @@
   Codexに1つのプロンプトを送るだけで、検証済みプラグインのダウンロード、DSHへのインストール、DSHの起動まで進みます。バックエンド一式のデプロイは不要です。
 </p>
 
+## OpenGUI-Plus 強化版の追加機能
+
+OpenGUI-Plus は単なるリネームではありません。OpenGUI の Android GUI Agent に、上流コアを変更せずに動作する、永続化・組み合わせ可能な 10 個の DSH プラグインモジュールを追加しています。詳細は [OpenGUI-Plus ドキュメント](./docs/OPENGUI-PLUS.md) を参照してください。
+
+| # | モジュール | 主な機能 |
+|---|---|---|
+| 1 | **ワイヤレスデバッグ接続** `wlan-connection` | USB / WiFi / 自動接続、デバイス保存、状態確認、Android 11+ ペアリング |
+| 2 | **スニペットライブラリ** `snippet-library` | エイリアス、タグ、オートコンプリート、JSON 入出力 |
+| 3 | **アクションテンプレート** `action-template` | 複数手順の記録、`{{変数}}`、パラメータ実行 |
+| 4 | **スケジューラー** `scheduler` | ワンショット / 日次 / 週次 / Cron 実行とログ |
+| 5 | **プロジェクトグループ** `project-group` | デバイス、テンプレート、コマンド、スケジュールの一括切替 |
+| 6 | **AI デモレコーダー** `demo-recorder` | 操作と判断の記録、デモ修正、テンプレート変換 |
+| 7 | **ワークフローマーケット** `workflow-marketplace` | `.opengui-workflow` の共有、評価、インストール、実行 |
+| 8 | **ヒューマンフィードバック RL** `feedback-rl` | 評価を経験ベースに蓄積し、関連する知見を検索 |
+| 9 | **マルチデバイスプール** `device-pool` | キュー、優先度、並列数、負荷分散、自動割り当て |
+| 10 | **実行リプレイ** `replay` | 操作、スクリーンショット、AI 判断、異常復旧のフレーム再生と HTML / JSON 出力 |
+
+```bash
+cd deepseek-harness-plugin/opengui-plus
+npm install
+npm run build
+node lib/cli.js modules
+node lib/cli.js serve --port 8787
+```
+
 ## Demo
 
 <p align="center">
