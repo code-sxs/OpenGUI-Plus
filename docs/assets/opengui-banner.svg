@@ -60,7 +60,7 @@
   <path d="M52 356H1548" stroke="#232323" stroke-width="3" stroke-dasharray="16 18" opacity="0.55"/>
 
   <!-- ===== OpenGUI 主标题（左移） ===== -->
-  <g transform="translate(620 238)">
+  <g transform="translate(520 238)">
     <g font-family="'Arial Black', 'Impact', 'Helvetica Neue', sans-serif" font-size="196" font-weight="900" text-anchor="middle" letter-spacing="4">
       <text x="30" y="12" fill="none" stroke="#f1bf1f" stroke-width="12" opacity="0.95">OpenGUI</text>
       <text x="22" y="4" fill="none" stroke="#f1bf1f" stroke-width="8" opacity="0.95">OpenGUI</text>
@@ -75,7 +75,7 @@
   </rect>
 
   <!-- ===== PLUS 徽章（右移，彻底分开） ===== -->
-  <g transform="translate(1120, 118)">
+  <g transform="translate(1160, 118)">
     <!-- 旋转光环 -->
     <circle cx="80" cy="80" r="95" fill="none" stroke="url(#plusGradient)" stroke-width="2" stroke-dasharray="10 8" opacity="0.5">
       <animateTransform attributeName="transform" type="rotate" from="0 80 80" to="360 80 80" dur="15s" repeatCount="indefinite"/>
