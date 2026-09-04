@@ -73,6 +73,26 @@ node lib/cli.js serve --port 8787             # launch the visual console
 
 The console puts all 10 modules in one page. Data is persisted under `~/.opengui-plus` by default, survives restarts, and is isolated per project group. See the [full OpenGUI-Plus guide](./docs/OPENGUI-PLUS.md) for every method, input, and example.
 
+### Complete tutorial directory
+
+For step-by-step single-module usage, parameter formats, CLI / console operations, and multi-module production workflows, open the [📚 OpenGUI-Plus Tutorial Center](./tutorials/README.md).
+
+- [00 Environment, data, and concepts](./tutorials/00-环境与基本概念.md)
+- [01 Startup and common calls](./tutorials/01-启动方式与通用调用规范.md)
+- [02 Wireless debugging](./tutorials/02-模块一-无线调试连接.md)
+- [03 Snippet library](./tutorials/03-模块二-快捷指令库.md)
+- [04 Action templates](./tutorials/04-模块三-动作模板录制.md)
+- [05 Scheduler](./tutorials/05-模块四-定时任务.md)
+- [06 Project and action groups](./tutorials/06-模块五-项目组与动作组.md)
+- [07 AI demo recorder](./tutorials/07-模块六-AI演示与教学录制.md)
+- [08 Workflow marketplace](./tutorials/08-模块七-工作流模板市场.md)
+- [09 Human-feedback RL](./tutorials/09-模块八-人类反馈强化学习.md)
+- [10 Multi-device pool](./tutorials/10-模块九-多机设备池.md)
+- [11 Execution replay](./tutorials/11-模块十-执行可视化回放.md)
+- [12 Combination workflow](./tutorials/12-组合实战工作流.md)
+- [13 Troubleshooting, backup, and security](./tutorials/13-排障备份与安全运维.md)
+- [14 Developer extension guide](./tutorials/14-开发者扩展指南.md)
+
 ## Demo
 
 <p align="center">
