@@ -91,6 +91,9 @@ node lib/cli.js serve --port 8787             # 打开可视化控制台
 - [12 组合实战：从连接到批量回放](./tutorials/12-组合实战工作流.md)
 - [13 排障、备份与安全运维](./tutorials/13-排障备份与安全运维.md)
 - [14 开发者扩展指南](./tutorials/14-开发者扩展指南.md)
+- [15 给 DeepSeek Harness 的完整功能验证提示词](./tutorials/15-DeepSeek-Harness-完整功能验证提示词.md)
+
+如果你已经安装过 OpenGUI，**不需要卸载**。先把 [完整验证提示词](./tutorials/15-DeepSeek-Harness-完整功能验证提示词.md) 交给 DeepSeek Harness，让它使用本地源码、独立测试数据目录和已有安装做分层验证；只有在你明确确认后，才进行真实设备动作。
 
 ## Demo
 

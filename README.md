@@ -92,6 +92,9 @@ For step-by-step single-module usage, parameter formats, CLI / console operation
 - [12 Combination workflow](./tutorials/12-组合实战工作流.md)
 - [13 Troubleshooting, backup, and security](./tutorials/13-排障备份与安全运维.md)
 - [14 Developer extension guide](./tutorials/14-开发者扩展指南.md)
+- [15 Complete DeepSeek Harness validation prompt](./tutorials/15-DeepSeek-Harness-完整功能验证提示词.md)
+
+If OpenGUI is already installed, **do not uninstall it**. Give DeepSeek Harness the [complete validation prompt](./tutorials/15-DeepSeek-Harness-完整功能验证提示词.md) and let it test the local source, isolated test data, and existing installation in layers; real-device actions require explicit confirmation.
 
 ## Demo
 
