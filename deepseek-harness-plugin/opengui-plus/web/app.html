@@ -321,11 +321,11 @@ async function getStatus() {
 /* ====================================================================== */
 const toastEl = document.getElementById('toast');
 let toastTimer = null;
-function toast(msg, kind = '') {
+function toast(msg, kind = '', durationMs = 2400) {
   toastEl.textContent = msg;
   toastEl.className = 'toast show' + (kind ? ' ' + kind : '');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastEl.className = 'toast', 2400);
+  toastTimer = setTimeout(() => toastEl.className = 'toast', durationMs);
 }
 
 /* ====================================================================== */
@@ -937,7 +937,21 @@ async function pairDiscoveredDevice(p) {
     });
     if (!save.ok) return toast('保存失败：' + save.error, 'err');
     const c = await call('wlan-connection.connect', { mode: 'wifi', id: save.value?.device?.id });
-    if (!c.ok) return toast('连接失败：' + c.error, 'err');
+    if (!c.ok) {
+      // Most common failure: TCP connect to the advertised port is refused,
+      // because Android's wireless-debug listener has dropped (locked screen,
+      // toggle flipped, port rotated) but the stale mDNS entry still
+      // advertises the old port. Surface a clear, actionable hint instead of
+      // the raw "actively refused" error.
+      const raw = String(c.error ?? '');
+      const isRefused = /拒绝|refus|closed|ECONNREFUSED|cannot connect|unable to connect|actively|not listening/i.test(raw);
+      if (isRefused) {
+        toast('端口被拒（手机无线调试监听已掉）→ 保持「无线调试」页面前台打开，5 秒后点「↻ 刷新」重扫端口；或改用「使用配对码配对设备」重新配对', 'err', 5200);
+      } else {
+        toast('连接失败：' + raw, 'err');
+      }
+      return;
+    }
     toast('已连接', 'ok');
   }
   await refreshDevices();
