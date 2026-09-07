@@ -686,12 +686,25 @@ export function createWirelessConnectionModule(): PlusModule {
         // the user pairs + connects). Keep the mDNS probe short — 5s is
         // generous on a real LAN and prevents the UI from hanging when adb's
         // mNS responder (Bonjour on Windows) is not installed.
+        let adbError: string | undefined
         let mdnsError: string | undefined
+
+        const runner = adb()
+        if (runner === null) {
+          adbError = '当前控制台没有可用的 adb runner（请确认 adb 已安装并加入 PATH，或检查 `node lib/cli.js serve` 启动时是否报「未检测到可用的 adb」）'
+        }
+
+        const onlinePromise: Promise<readonly AdbDeviceRow[]> = runner === null
+          ? Promise.resolve([])
+          : rows().catch((error: unknown) => {
+              adbError = error instanceof Error ? error.message : String(error)
+              return [] as readonly AdbDeviceRow[]
+            })
         const mdnsPromise = mdnsRows(5_000).catch((error: unknown) => {
           mdnsError = error instanceof Error ? error.message : String(error)
           return [] as readonly MdnsService[]
         })
-        const [online, services] = await Promise.all([rows(), mdnsPromise])
+        const [online, services] = await Promise.all([onlinePromise, mdnsPromise])
 
         const found: DiscoveredDevice[] = online.map((row) => {
           const profile = matchProfile(row)
@@ -718,7 +731,64 @@ export function createWirelessConnectionModule(): PlusModule {
         )
         const pairable = pickPairable(services, connectedEndpoints, knownEndpoints)
 
-        return { devices: found, pairable, mdnsError, mode: preference.mode }
+        return { devices: found, pairable, mdnsError, adbError, mode: preference.mode }
+      },
+
+      /**
+       * Diagnostic snapshot: runs the three raw adb commands the UI cares
+       * about (`adb version`, `adb devices -l`, `adb mdns services`) and
+       * returns their full stdout/stderr plus the adb binary path and
+       * whether the probe succeeded. Designed so the connection-status
+       * page can show the user exactly what adb is (or isn't) reporting
+       * when no devices appear.
+       */
+      async diagnose() {
+        const runner = adb()
+        const at = new Date().toISOString()
+        if (runner === null) {
+          return {
+            at,
+            adbAvailable: false,
+            binary: null as string | null,
+            reason: '当前控制台没有可用的 adb runner。启动时控制台已降级为「纯控制台模式」，请安装 adb 并加入 PATH，然后重启控制台。',
+            version: null,
+            devices: null,
+            mdns: null,
+          }
+        }
+        const binary: string = runner.binary
+        let adbAvailable = true
+        let version: { stdout: string; stderr: string; code: number } | null = null
+        let devices: { stdout: string; stderr: string; code: number } | null = null
+        let mdns: { stdout: string; stderr: string; code: number } | null = null
+        const errors: Record<string, string> = {}
+
+        try {
+          version = await runner.run(['version'], 5_000)
+        } catch (error: unknown) {
+          adbAvailable = false
+          errors.version = error instanceof Error ? error.message : String(error)
+        }
+        try {
+          devices = await runner.run(['devices', '-l'], 8_000)
+        } catch (error: unknown) {
+          errors.devices = error instanceof Error ? error.message : String(error)
+        }
+        try {
+          mdns = await runner.run(['mdns', 'services'], 6_000)
+        } catch (error: unknown) {
+          errors.mdns = error instanceof Error ? error.message : String(error)
+        }
+
+        return {
+          at,
+          adbAvailable,
+          binary,
+          ...(Object.keys(errors).length > 0 ? { errors } : {}),
+          version,
+          devices,
+          mdns,
+        }
       },
 
       async listDevices() {
@@ -1194,6 +1264,7 @@ export function createWirelessConnectionModule(): PlusModule {
       { name: 'status', summary: '刷新并返回当前连接状态' },
       { name: 'setMode', summary: '设置连接模式', input: { mode: 'usb | wifi | auto', autoConnect: '启动时是否自动连接' } },
       { name: 'discover', summary: '探测 adb 当前可见的设备' },
+      { name: 'diagnose', summary: '运行诊断：返回 adb 二进制路径、version / devices -l / mdns services 的原始输出，用于排查「不刷新/扫不到设备」' },
       { name: 'listDevices', summary: '列出已保存的设备' },
       { name: 'screencap', summary: '截取设备屏幕 PNG（供控制台投屏使用）', input: { serial: 'adb 序列号' } },
       { name: 'saveDevice', summary: '保存设备', input: { transport: 'usb | wifi', serial: 'USB 序列号', host: 'WiFi 地址', port: '连接端口，默认 5555', pairingPort: '可选，记住 Android 11+ 配对端口', name: '备注名', groups: '设备分组（数组或逗号分隔）', taskId: '绑定的任务标识', notes: '备注' } },

@@ -1081,6 +1081,8 @@ async function refreshConnStatus() {
   const s = st.value ?? {};
   const devices = disc.ok ? (disc.value?.devices ?? []) : [];
   const pairable = disc.ok ? (disc.value?.pairable ?? []) : [];
+  const adbError = disc.ok ? disc.value?.adbError : undefined;
+  const mdnsError = disc.ok ? disc.value?.mdnsError : undefined;
   const mode = s.mode ?? (s.preference && s.preference.mode) ?? 'auto';
   const stateLabelMap = { connected: '已连接', connecting: '连接中', disconnected: '未连接', error: '错误' };
   const stateLabel = stateLabelMap[s.state] ?? s.state ?? '未知';
@@ -1101,15 +1103,37 @@ async function refreshConnStatus() {
           </div>`).join('')}
        </div>`
     : '';
+  const errBanner = adbError
+    ? `<div class="empty" style="border-color:#fecaca;color:var(--err);margin-top:10px;text-align:left">
+         <b>⚠ adb 不可用 — 这就是「设备一直是 0 台」的真正原因</b><br>
+         ${escapeHtml(adbError)}<br>
+         <span style="font-size:11.5px;color:var(--ink-3)">点下方「运行诊断」看 adb 原始输出；最常见的原因是控制台进程的 PATH 里没有 adb（platform-tools 没装或没加 PATH）。如果是沙箱里跑的服务，请改用你本地 shell 启动 <code>node lib/cli.js serve --port 8899</code>。</span>
+       </div>`
+    : (mdnsError
+        ? `<div class="empty" style="border-color:#fed7aa;color:#9a3412;margin-top:10px;text-align:left">
+             <b>mDNS 探测失败</b> · ${escapeHtml(mdnsError)}<br>
+             <span style="font-size:11.5px;color:var(--ink-3)">通常是电脑没装 Bonjour（Windows）或 adb mDNS 被防火墙拦了；可改用「设备」面板里的「手动 WiFi」或「扫二维码」方式。</span>
+           </div>`
+        : '');
   out.innerHTML = `
     <div class="kv-grid">
       <div><span>连接模式</span><b>${escapeHtml(String(mode))}</b></div>
       <div><span>状态</span><b>${escapeHtml(String(stateLabel))}</b></div>
       <div><span>当前端点</span><b class="mono">${escapeHtml(String(endpoint))}</b></div>
     </div>
+    ${errBanner}
     <div class="sub" style="margin-top:18px">已连接的 adb 设备 · ${devices.length} 台</div>
     <div class="dev-list" style="margin-top:8px">${devHtml}</div>
     ${pairHtml}
+    <div class="card" style="margin-top:14px;background:var(--surface-2);box-shadow:none">
+      <div style="display:flex;align-items:center;gap:10px">
+        <h3 style="margin:0;font-size:14px">运行诊断</h3>
+        <div style="flex:1"></div>
+        <button class="ghost" id="conn-diag-go">运行诊断</button>
+      </div>
+      <div class="sub" style="margin-top:4px">执行 <code>adb version</code> / <code>adb devices -l</code> / <code>adb mdns services</code>，把原始输出贴在这里。设备一直是 0 时先看这段。</div>
+      <div id="conn-diag-out" style="margin-top:8px"></div>
+    </div>
   `;
   out.querySelectorAll('[data-pair]').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -1118,6 +1142,34 @@ async function refreshConnStatus() {
       await refreshConnStatus();
     });
   });
+  document.getElementById('conn-diag-go')?.addEventListener('click', runConnDiagnose);
+}
+
+async function runConnDiagnose() {
+  const out = document.getElementById('conn-diag-out');
+  if (!out) return;
+  out.innerHTML = '<div class="sub">运行中…</div>';
+  const r = await call('wlan-connection.diagnose');
+  if (!r.ok) {
+    out.innerHTML = `<div class="empty" style="color:var(--err);text-align:left">诊断失败：${escapeHtml(r.error)}</div>`;
+    return;
+  }
+  const d = r.value ?? {};
+  const summary = d.adbAvailable
+    ? `<div style="color:var(--ok)"><b>✓ adb 可用</b> · binary=<code>${escapeHtml(String(d.binary ?? ''))}</code> · 探测时间 ${escapeHtml(String(d.at ?? ''))}</div>`
+    : `<div style="color:var(--err)"><b>✗ adb 不可用</b>${d.binary ? ' · binary=<code>' + escapeHtml(String(d.binary)) + '</code>' : ''}</div>
+       ${d.reason ? `<div class="sub" style="margin-top:4px;text-align:left">${escapeHtml(String(d.reason))}</div>` : ''}`;
+  const block = (label, cmd, v) => {
+    if (v === null || v === undefined) {
+      return `<div style="margin-top:8px"><b>${escapeHtml(label)}</b> · <code>${escapeHtml(cmd)}</code> · <i>未执行</i></div>`;
+    }
+    const text = `${v.stdout ?? ''}${v.stderr ? '\n[stderr]\n' + v.stderr : ''}\n[exit ${v.code}]`.trim();
+    return `<details style="margin-top:6px" open>
+      <summary><b>${escapeHtml(label)}</b> · <code>${escapeHtml(cmd)}</code> · exit=${v.code}</summary>
+      <pre class="mono" style="background:var(--surface);padding:8px;border-radius:6px;white-space:pre-wrap;margin:4px 0 0;font-size:12px">${escapeHtml(text)}</pre>
+    </details>`;
+  };
+  out.innerHTML = `${summary}${block('adb version', 'adb version', d.version)}${block('adb devices -l', 'adb devices -l', d.devices)}${block('adb mdns services', 'adb mdns services', d.mdns)}`;
 }
 
 /* ====================================================================== */

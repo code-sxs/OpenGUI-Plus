@@ -276,6 +276,9 @@ describe('设备发现：wlan-connection.discover 必须包含 mDNS 可配对设
     expect(result.ok).toBe(true)
     expect(result.value?.devices).toEqual([])
     expect(result.value?.pairable).toEqual([])
+    // adb 不可用时必须明确告诉前端原因，否则用户会以为「没设备」实际是 adb 没装
+    expect(typeof result.value?.adbError).toBe('string')
+    expect(result.value?.adbError).toMatch(/adb/i)
   })
 
   it('discover 收到 mDNS 配对服务时一并返回（不被 adb devices 屏蔽）', async () => {
@@ -300,6 +303,40 @@ describe('设备发现：wlan-connection.discover 必须包含 mDNS 可配对设
     expect(pairable.find((p: any) => p.port === 5555)).toMatchObject({ kind: 'connect', host: '192.168.1.43' })
     // Confirm mDNS was actually queried (proves we no longer ignore it).
     expect(adb.calls.some(c => c === 'mdns services')).toBe(true)
+  })
+
+  it('diagnose 在 adb 可用时返回 version / devices / mdns 原始输出', async () => {
+    const adb = createFakeAdbRunner({
+      version: { stdout: 'Android Debug Bridge version 1.0.41\n', stderr: '', code: 0 },
+      'devices -l': { stdout: 'List of devices attached\nemulator-5554\tdevice product:foo model:Pixel\n', stderr: '', code: 0 },
+      'mdns services': { stdout: 'List of discovered mdns services\n', stderr: '', code: 0 },
+    })
+    const host = await PlusHost.create({ dataDir: tempDir(), adb, capabilities: { adb: true } })
+    const result = await host.call('wlan-connection.diagnose', {})
+    expect(result.ok).toBe(true)
+    const d: any = result.value
+    expect(d.adbAvailable).toBe(true)
+    expect(typeof d.binary).toBe('string')
+    expect(d.version?.stdout).toMatch(/Android Debug Bridge/)
+    expect(d.devices?.stdout).toMatch(/emulator-5554/)
+    expect(d.mdns?.stdout).toMatch(/List of discovered mdns services/)
+    // 确认三条命令都被实际调用过
+    expect(adb.calls).toContain('version')
+    expect(adb.calls.some(c => c === 'devices -l')).toBe(true)
+    expect(adb.calls).toContain('mdns services')
+  })
+
+  it('diagnose 在 adb 不可用时返回 adbAvailable:false 与原因', async () => {
+    const { host } = await boot(null)
+    const result = await host.call('wlan-connection.diagnose', {})
+    expect(result.ok).toBe(true)
+    const d: any = result.value
+    expect(d.adbAvailable).toBe(false)
+    expect(d.binary).toBeNull()
+    expect(typeof d.reason).toBe('string')
+    expect(d.version).toBeNull()
+    expect(d.devices).toBeNull()
+    expect(d.mdns).toBeNull()
   })
 })
 
