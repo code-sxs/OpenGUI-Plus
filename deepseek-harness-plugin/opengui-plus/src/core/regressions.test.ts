@@ -245,6 +245,64 @@ describe('投屏：wlan-connection.screencap', () => {
   })
 })
 
+describe('设备发现：wlan-connection.discover 必须包含 mDNS 可配对设备', () => {
+  it('pickPairable 归类 pairing/connect、去重、剔除已连接', async () => {
+    const { pickPairable } = await import('../modules/wlan-connection/index.js')
+    const { MDNS_PAIRING_TYPE, MDNS_CONNECT_TYPE } = await import('../modules/wlan-connection/pairing.js')
+    const services = [
+      { name: 'adb-1234._adb-tls-pairing._tcp', type: MDNS_PAIRING_TYPE, host: '192.168.1.20', port: 37121 },
+      { name: 'adb-1234._adb._tcp', type: MDNS_CONNECT_TYPE, host: '192.168.1.20', port: 5555 },
+      // Same host:port twice (different service names) — must dedupe to one.
+      { name: 'dup._adb-tls-pairing._tcp', type: MDNS_PAIRING_TYPE, host: '10.0.0.5', port: 41237 },
+      { name: 'dup._adb-tls-pairing._tcp', type: MDNS_PAIRING_TYPE, host: '10.0.0.5', port: 41237 },
+      // Irrelevant service type — must be ignored.
+      { name: 'http._http._tcp', type: '_http._tcp', host: '10.0.0.99', port: 80 },
+    ]
+    const out = pickPairable(
+      services,
+      new Set(['192.168.1.20:5555']), // 192.168.1.20:5555 is already connected → drop
+      new Set(['10.0.0.5:41237']),     // 10.0.0.5:41237 already saved → mark known
+    )
+    expect(out).toHaveLength(2)
+    const pairing = out.find(p => p.port === 37121)
+    const known = out.find(p => p.port === 41237)
+    expect(pairing).toMatchObject({ kind: 'pairing', host: '192.168.1.20', known: false })
+    expect(known).toMatchObject({ kind: 'pairing', host: '10.0.0.5', known: true })
+  })
+
+  it('discover 在 adb 不可用时不崩，pairable 为空数组', async () => {
+    const { host, call } = await boot(null)
+    const result = await host.call('wlan-connection.discover', {})
+    expect(result.ok).toBe(true)
+    expect(result.value?.devices).toEqual([])
+    expect(result.value?.pairable).toEqual([])
+  })
+
+  it('discover 收到 mDNS 配对服务时一并返回（不被 adb devices 屏蔽）', async () => {
+    const adb = createFakeAdbRunner({
+      'devices -l': { stdout: 'List of devices attached\n\n', stderr: '', code: 0 },
+      'mdns services': {
+        stdout: [
+          'List of discovered mdns services',
+          'studio-aaaa\t_adb-tls-pairing._tcp\t192.168.1.42:39231',
+          'studio-bbbb\t_adb-tls-connect._tcp\t192.168.1.43:5555',
+        ].join('\n'),
+        stderr: '',
+        code: 0,
+      },
+    })
+    const host = await PlusHost.create({ dataDir: tempDir(), adb, capabilities: { adb: true } })
+    const result = await host.call('wlan-connection.discover', {})
+    expect(result.ok).toBe(true)
+    const pairable = result.value?.pairable ?? []
+    expect(pairable).toHaveLength(2)
+    expect(pairable.find((p: any) => p.port === 39231)).toMatchObject({ kind: 'pairing', host: '192.168.1.42' })
+    expect(pairable.find((p: any) => p.port === 5555)).toMatchObject({ kind: 'connect', host: '192.168.1.43' })
+    // Confirm mDNS was actually queried (proves we no longer ignore it).
+    expect(adb.calls.some(c => c === 'mdns services')).toBe(true)
+  })
+})
+
 describe('F-05 action-template 变量替换', () => {
   it('执行时 {{pkg}} 被真实替换后再交给 adb', async () => {
     const adb = createFakeAdbRunner({ 'shell monkey*': { stdout: 'Events injected: 1', code: 0 } })

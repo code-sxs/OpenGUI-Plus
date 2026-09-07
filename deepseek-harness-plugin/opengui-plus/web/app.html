@@ -217,6 +217,10 @@
   .dev-row .actions button:hover { background: var(--brand-soft); color: var(--brand); }
   .dev-row .actions button.danger { color: var(--err); }
   .dev-row .actions button.danger:hover { background: #fef2f2; }
+  .kv-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+  .kv-grid > div { background: var(--surface-2); border-radius: var(--radius-m); padding: 10px 12px; }
+  .kv-grid > div > span { display: block; font-size: 11.5px; color: var(--ink-3); margin-bottom: 4px; }
+  .kv-grid > div > b { font-size: 14px; font-weight: 600; }
 
   .tabs { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
   .tabs button {
@@ -333,9 +337,12 @@ const state = {
   projects: [],
   currentProject: null,
   panel: null,                // module descriptor
-  devices: [],                // discovered live devices
+  devices: [],                // discovered live devices (from adb devices -l)
+  pairable: [],               // mDNS wireless-debug devices waiting to pair/connect
+  mdnsError: undefined,       // last mDNS probe error (Bonjour missing, etc.)
   screenshots: new Map(),     // serial -> { url, ts }
-  refreshTimer: null,
+  refreshTimer: null,         // screencap polling
+  deviceTimer: null,          // periodic discover() polling for live refresh
   focusSerial: null,
   tplRecording: null,
 };
@@ -401,6 +408,10 @@ function renderPanel() {
 
 function renderDashboard() {
   const cards = state.devices.map(d => renderDeviceCard(d)).join('');
+  const pairable = (state.pairable ?? []).map(p => renderPairableCard(p)).join('');
+  const mdnsHint = state.mdnsError
+    ? `<div class="empty" style="margin-top:10px">无线调试探测失败：${escapeHtml(state.mdnsError)}<br>通常是电脑没装 Bonjour（Windows）或 adb mDNS 被防火墙拦截，可改用「设备」面板里的「手动 WiFi」或「扫二维码」。</div>`
+    : '';
   return `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
       <h2 style="margin:0;font-size:18px">已连接的设备</h2>
@@ -416,7 +427,36 @@ function renderDashboard() {
            <div class="big">还没有在线的设备</div>
            <div>把手机用 USB 连上电脑，或在「设备」面板里扫码配对。</div>
          </div>`}
+    ${pairable
+      ? `<div style="margin-top:24px">
+           <div style="display:flex;align-items:center;gap:10px">
+             <h2 style="margin:0;font-size:18px">可配对设备 · 无线调试</h2>
+             <span class="pill" style="background:var(--surface-2);color:var(--ink-2)">${state.pairable.length} 台待配对</span>
+           </div>
+           <div class="sub" style="margin-top:4px">手机在「开发者选项 → 无线调试」里开着就会被自动扫到，点按钮即可配对 / 直连。</div>
+           <div class="device-grid" style="margin-top:12px">${pairable}</div>
+           ${mdnsHint}
+         </div>`
+      : mdnsHint}
   `;
+}
+
+function renderPairableCard(p) {
+  const ready = p.kind === 'connect';
+  return `
+    <div class="device-card" data-host="${escapeHtml(p.host)}" data-port="${p.port}">
+      <div class="frame"><div class="ph"><div class="ring"></div><div>无线调试</div></div></div>
+      <div class="body">
+        <span class="status ${ready ? '' : 'off'}"></span>
+        <span class="name">${escapeHtml(p.serviceName)}</span>
+        <span class="serial mono">${escapeHtml(p.host)}:${p.port}</span>
+      </div>
+      <div class="actions">
+        <button data-pair="${escapeHtml(JSON.stringify({ host: p.host, port: p.port, kind: p.kind, serviceName: p.serviceName }))}">
+          ${p.kind === 'pairing' ? '用配对码配对' : '一键连接'}
+        </button>
+      </div>
+    </div>`;
 }
 
 function renderDeviceCard(d) {
@@ -455,19 +495,27 @@ function bindDashboardEvents() {
       if (act === 'open') return openModule('wlan-connection', serial);
     });
   });
+  document.querySelectorAll('[data-pair]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      let p; try { p = JSON.parse(btn.dataset.pair); } catch { return; }
+      await pairDiscoveredDevice(p);
+    });
+  });
 }
 
 /* ====================================================================== */
 /* Device grid: discovery + screencap polling                             */
 /* ====================================================================== */
 
-async function refreshDevices() {
+async function refreshDevices({ silent = false } = {}) {
   const result = await call('wlan-connection.discover');
-  if (!result.ok) { toast(result.error, 'err'); return; }
+  if (!result.ok) { if (!silent) toast(result.error, 'err'); return; }
   state.devices = (result.value?.devices ?? []).map(d => ({ ...d }));
+  state.pairable = (result.value?.pairable ?? []).map(p => ({ ...p }));
+  state.mdnsError = result.value?.mdnsError ?? undefined;
   const live = new Set(state.devices.map(d => d.serial));
   for (const key of [...state.screenshots.keys()]) if (!live.has(key)) state.screenshots.delete(key);
-  renderCenter();
+  if (state.view === 'dashboard') renderCenter();
 }
 
 async function takeScreenshot(serial) {
@@ -489,6 +537,18 @@ function startScreenshotPolling() {
     if (state.view === 'dashboard') renderCenter();
   };
   state.refreshTimer = setInterval(tick, 2500);
+}
+
+// Poll discover() so a freshly plugged-in USB phone (or a phone that just
+// opened wireless debugging) shows up in the device grid without a manual
+// refresh. Re-render only when we are actually on the dashboard.
+function startDevicePolling() {
+  if (state.deviceTimer) return;
+  const tick = async () => {
+    await refreshDevices({ silent: true });
+    if (state.view === 'wlan-connection') refreshConnStatus();
+  };
+  state.deviceTimer = setInterval(tick, 4000);
 }
 
 /* ====================================================================== */
@@ -709,16 +769,95 @@ function bindAddTab(s) {
     else if (kind === 'usb') pane.innerHTML = addUsbPane();
     else if (kind === 'wifi') pane.innerHTML = addWifiPane();
     else pane.innerHTML = addQrPane();
-    pane.querySelectorAll('form,button[data-add-act]').forEach(el => {
-      el.addEventListener('submit', e => { e.preventDefault(); });
-      el.addEventListener('click', e => {
-        const btn = e.target.closest('[data-add-act]');
-        if (btn) handleAddAction(btn.dataset.addAct, pane);
+
+    // Wire form submissions — the previous code only preventDefault-ed them,
+    // so every add-device form (add-usb / add-wifi / add-qr) was a dead end.
+    pane.querySelectorAll('form').forEach(form => {
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        const data = readForm(form);
+        if (form.id === 'add-usb') submitUsbForm(data);
+        else if (form.id === 'add-wifi') submitWifiForm(data);
+        else if (form.id === 'add-qr') submitQrForm(data);
       });
+    });
+
+    // Action buttons (generate reverse QR, auto-detect) — delegated click.
+    pane.addEventListener('click', e => {
+      const btn = e.target.closest('[data-act],[data-add-act]');
+      if (!btn) return;
+      if (btn.dataset.act === 'gen') generateReverseQr();
+      else if (btn.dataset.addAct) handleAddAction(btn.dataset.addAct, pane);
     });
   };
   document.querySelectorAll('#panel [data-add]').forEach(b => b.addEventListener('click', () => renderPane(b.dataset.add)));
   renderPane('auto');
+}
+
+function parseGroupList(raw) {
+  return String(raw ?? '').split(/[,，;；\s]+/).map(t => t.trim()).filter(Boolean);
+}
+
+async function submitUsbForm(data) {
+  if (!data.serial) return toast('请填写 USB 序列号', 'err');
+  const r = await call('wlan-connection.saveDevice', {
+    transport: 'usb', serial: data.serial, name: data.name, model: data.model,
+    groups: parseGroupList(data.groups), taskId: data.taskId, notes: data.notes,
+  });
+  if (!r.ok) return toast('保存失败：' + r.error, 'err');
+  toast('已加入管理', 'ok');
+  await refreshDevices();
+}
+
+async function submitWifiForm(data) {
+  if (!data.host) return toast('请填写 WiFi 地址', 'err');
+  const port = data.port ? Number(data.port) : 5555;
+  const input = {
+    transport: 'wifi', host: data.host, port, name: data.name,
+    groups: parseGroupList(data.groups), taskId: data.taskId, notes: data.notes,
+  };
+  if (data.pairingPort) input.pairingPort = Number(data.pairingPort);
+  const r = await call('wlan-connection.saveDevice', input);
+  if (!r.ok) return toast('保存失败：' + r.error, 'err');
+  toast('已加入管理', 'ok');
+  await refreshDevices();
+}
+
+async function submitQrForm(data) {
+  if (!data.qr) return toast('请粘贴二维码内容', 'err');
+  const input = { qr: data.qr };
+  if (data.name) input.name = data.name;
+  // pairAndConnect parses the QR → calls `adb pair <host>:<pairingPort> <code>`
+  // via mDNS-resolved service name, then `adb connect` on the real connect
+  // port, and saves the profile — so one click does the whole flow.
+  const r = await call('wlan-connection.pairAndConnect', input);
+  if (!r.ok) return toast('配对失败：' + r.error, 'err');
+  const v = r.value ?? {};
+  toast(v.connected ? '已配对并连接' : '配对完成（连接未建立）', 'ok');
+  await refreshDevices();
+}
+
+async function generateReverseQr() {
+  const out = document.getElementById('qr-out');
+  if (!out) return;
+  out.innerHTML = `<div class="empty">正在生成二维码…</div>`;
+  const serviceName = 'opengui-plus-' + Math.random().toString(36).slice(2, 8);
+  // generate=true + waitForScan=true tells pairWithQr to mint a QR via
+  // startQrPairing and return immediately so we can show it. Pairing itself
+  // happens in the background once the phone scans.
+  const r = await call('wlan-connection.pairWithQr', { serviceName, generate: true, waitForScan: false });
+  if (!r.ok) { out.innerHTML = `<div class="empty">${escapeHtml(r.error)}</div>`; return; }
+  const v = r.value ?? {};
+  if (v.qr?.dataUrl || v.dataUrl) {
+    const dataUrl = v.qr?.dataUrl ?? v.dataUrl;
+    const qrText = v.qr?.qrText ?? v.qrText ?? '';
+    out.innerHTML = `<img src="${escapeHtml(dataUrl)}" style="width:100%;max-width:260px;background:white;padding:8px;border-radius:8px">
+      <div style="color:var(--ink-3);font-size:11.5px;margin-top:6px">服务名：<code>${escapeHtml(serviceName)}</code></div>
+      <div style="color:var(--ink-3);font-size:11.5px;margin-top:4px">二维码文本：<br><code style="word-break:break-all">${escapeHtml(qrText)}</code></div>
+      <div class="sub" style="margin-top:8px">请在手机「开发者选项 → 无线调试」里点「用二维码配对」扫描这张图。</div>`;
+    return;
+  }
+  out.innerHTML = `<div class="empty">二维码生成成功，但后端未返回 dataUrl。<br>${escapeHtml(JSON.stringify(v))}</div>`;
 }
 
 function addAutoPane() {
@@ -732,22 +871,76 @@ async function handleAddAction(act, pane) {
     const r = await call('wlan-connection.discover');
     const out = document.getElementById('auto-result');
     if (!r.ok) { out.innerHTML = `<div class="empty">检测失败：${escapeHtml(r.error)}</div>`; return; }
-    const newOnes = r.value.devices.filter(d => !d.known);
-    if (newOnes.length === 0) {
-      out.innerHTML = `<div class="empty"><div class="big">没有新设备</div><div>所有 adb 报告的设备都已经在管理列表里。</div></div>`;
+
+    const devices = r.value.devices ?? [];
+    const pairable = r.value.pairable ?? [];
+    const newOnes = devices.filter(d => !d.known);
+    const mdnsError = r.value.mdnsError;
+
+    if (newOnes.length === 0 && pairable.length === 0) {
+      let html = `<div class="empty"><div class="big">没有发现新设备</div><div>所有 adb 报告的设备都已经在管理列表里，且没有通过 mDNS 广播的待配对手机。</div></div>`;
+      if (mdnsError) html += `<div class="empty" style="margin-top:8px">mDNS 探测不可用：${escapeHtml(mdnsError)}<br>这通常是因为电脑没装 Bonjour（Windows）或 adb mdns 被防火墙拦了。可以改用「手动 WiFi」或「扫二维码」。</div>`;
+      out.innerHTML = html;
       return;
     }
-    out.innerHTML = `<div class="card" style="margin:0;box-shadow:none;border:1px dashed var(--line-2)">
-      <h3>发现 ${newOnes.length} 台新设备</h3>
-      ${newOnes.map(d => `<div class="dev-row" style="grid-template-columns:1fr auto">
-        <div><div class="title">${escapeHtml(d.name ?? d.serial)}</div><div class="meta">${escapeHtml(d.serial)} · ${escapeHtml(d.model ?? '')}</div></div>
-        <div class="actions"><button class="primary" data-import="${escapeHtml(d.serial)}">导入</button></div>
-      </div>`).join('')}
-    </div>`;
+
+    const parts = [];
+    if (newOnes.length > 0) {
+      parts.push(`<div class="card" style="margin:0 0 10px;box-shadow:none;border:1px dashed var(--line-2)">
+        <h3>已连接的 adb 设备 · ${newOnes.length} 台新</h3>
+        ${newOnes.map(d => `<div class="dev-row" style="grid-template-columns:1fr auto">
+          <div><div class="title">${escapeHtml(d.name ?? d.serial)}</div><div class="meta">${escapeHtml(d.serial)} · ${escapeHtml(d.model ?? '')} · ${escapeHtml(d.transport)}</div></div>
+          <div class="actions"><button class="primary" data-import="${escapeHtml(d.serial)}">导入</button></div>
+        </div>`).join('')}
+      </div>`);
+    }
+    if (pairable.length > 0) {
+      parts.push(`<div class="card" style="margin:0;box-shadow:none;border:1px dashed var(--line-2)">
+        <h3>mDNS 发现的无线调试设备 · ${pairable.length} 台待配对</h3>
+        <div class="sub" style="margin-top:-4px">手机在「开发者选项 → 无线调试」里开着就能被搜到。点「用配对码配对」输入手机屏幕上显示的 6 位数字即可完成 adb pair + connect。</div>
+        ${pairable.map(p => `<div class="dev-row" style="grid-template-columns:1fr auto">
+          <div><div class="title">${escapeHtml(p.serviceName)}</div>
+          <div class="meta">${escapeHtml(p.host)}:${p.port} · ${p.kind === 'pairing' ? '需配对码' : '已配对，可直连'} · ${p.known ? '已保存' : '未入库'}</div></div>
+          <div class="actions"><button class="primary" data-pair="${escapeHtml(JSON.stringify({host:p.host, port:p.port, kind:p.kind, serviceName:p.serviceName}))}">${p.kind === 'pairing' ? '用配对码配对' : '一键连接'}</button></div>
+        </div>`).join('')}
+      </div>`);
+    }
+    if (mdnsError) {
+      parts.push(`<div class="empty">mDNS 探测失败：${escapeHtml(mdnsError)}<br>如果上面没列出无线调试设备，请检查 Bonjour 安装或改用「手动 WiFi」/「扫二维码」。</div>`);
+    }
+    out.innerHTML = parts.join('');
+
     out.querySelectorAll('[data-import]').forEach(btn => {
       btn.addEventListener('click', () => addDeviceFromDiscover(btn.dataset.import, btn.closest('.dev-row').querySelector('.title').textContent));
     });
+    out.querySelectorAll('[data-pair]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        let p; try { p = JSON.parse(btn.dataset.pair); } catch { return; }
+        pairDiscoveredDevice(p);
+      });
+    });
   }
+}
+
+async function pairDiscoveredDevice(p) {
+  if (p.kind === 'pairing') {
+    const code = prompt(`手机「无线调试」页面上显示的 6 位配对码：\n\n${p.serviceName}  @  ${p.host}:${p.port}`);
+    if (!code) return;
+    const r = await call('wlan-connection.pairAndConnect', { host: p.host, port: p.port, code: code.trim() });
+    if (!r.ok) return toast('配对失败：' + r.error, 'err');
+    const v = r.value ?? {};
+    toast(v.connected ? '已配对并连接' : '配对完成（连接未建立）', 'ok');
+  } else {
+    // connect-kind: device is already paired, just save the profile and connect.
+    const save = await call('wlan-connection.saveDevice', {
+      transport: 'wifi', host: p.host, port: p.port, name: p.serviceName,
+    });
+    if (!save.ok) return toast('保存失败：' + save.error, 'err');
+    const c = await call('wlan-connection.connect', { mode: 'wifi', id: save.value?.device?.id });
+    if (!c.ok) return toast('连接失败：' + c.error, 'err');
+    toast('已连接', 'ok');
+  }
+  await refreshDevices();
 }
 
 async function addDeviceFromDiscover(serial, defaultName) {
@@ -842,12 +1035,14 @@ function bindPairTab(s) {
 function wlanConnTab(s) {
   return `<div class="card">
     <h3>连接状态</h3>
-    <div class="sub">查看当前连接模式、最近一次连接结果、错误信息。</div>
+    <div class="sub">当前连接模式、已连设备、以及通过无线调试广播出来的待配对设备。页面会每 4 秒自动刷新。</div>
     <div class="row">
       <button class="primary" data-conn="auto">自动模式</button>
       <button class="ghost" data-conn="usb">USB</button>
       <button class="ghost" data-conn="wifi">WiFi</button>
       <button class="ghost" data-conn="disconnect">断开</button>
+      <div style="flex:1"></div>
+      <button class="ghost" id="conn-refresh">↻ 刷新</button>
     </div>
     <div id="conn-out" style="margin-top:14px"></div>
   </div>`;
@@ -857,12 +1052,70 @@ function bindConnTab(s) {
   document.querySelectorAll('#panel [data-conn]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const a = btn.dataset.conn;
-      const target = a === 'disconnect' ? 'wlan-connection.disconnect' : (a === 'wifi' ? 'wlan-connection.connect' : 'wlan-connection.connect');
-      const r = await call(target, a === 'connect' || a === 'auto' ? { mode: a === 'wifi' ? 'wifi' : 'auto' } : {});
-      const out = document.getElementById('conn-out');
-      if (!r.ok) { out.innerHTML = `<div class="empty" style="border-color:#fecaca;color:var(--err)">${escapeHtml(r.error)}</div>`; return; }
-      out.innerHTML = `<pre class="mono" style="background:var(--surface-2);padding:12px;border-radius:8px;white-space:pre-wrap">${escapeHtml(JSON.stringify(r.value, null, 2))}</pre>`;
-      await refreshDevices();
+      const target = a === 'disconnect' ? 'wlan-connection.disconnect' : 'wlan-connection.connect';
+      const input = (a === 'wifi' || a === 'auto') ? { mode: a === 'wifi' ? 'wifi' : 'auto' } : {};
+      const r = await call(target, input);
+      if (!r.ok) toast('操作失败：' + r.error, 'err');
+      else toast('操作已执行', 'ok');
+      await refreshConnStatus();
+    });
+  });
+  document.getElementById('conn-refresh')?.addEventListener('click', refreshConnStatus);
+  refreshConnStatus();
+}
+
+// Renders the live connection panel: mode, state, currently visible adb
+// devices, and mDNS pairable phones. Safe to call from the periodic device
+// poll — it no-ops when the connection tab is not on screen.
+async function refreshConnStatus() {
+  const out = document.getElementById('conn-out');
+  if (!out) return;
+  const [st, disc] = await Promise.all([
+    call('wlan-connection.status'),
+    call('wlan-connection.discover'),
+  ]);
+  if (!st.ok) {
+    out.innerHTML = `<div class="empty" style="color:var(--err)">读取连接状态失败：${escapeHtml(st.error)}</div>`;
+    return;
+  }
+  const s = st.value ?? {};
+  const devices = disc.ok ? (disc.value?.devices ?? []) : [];
+  const pairable = disc.ok ? (disc.value?.pairable ?? []) : [];
+  const mode = s.mode ?? (s.preference && s.preference.mode) ?? 'auto';
+  const stateLabelMap = { connected: '已连接', connecting: '连接中', disconnected: '未连接', error: '错误' };
+  const stateLabel = stateLabelMap[s.state] ?? s.state ?? '未知';
+  const endpoint = s.endpoint ? `${s.endpoint.host}:${s.endpoint.port}` : (s.serial ?? '—');
+  const devHtml = devices.length
+    ? devices.map(d => `<div class="dev-row">
+        <div><div class="title">${escapeHtml(d.name ?? d.model ?? d.serial)}</div>
+        <div class="meta">${escapeHtml(d.serial)} · ${escapeHtml(d.transport ?? '')} · ${escapeHtml(d.state ?? '')}</div></div>
+      </div>`).join('')
+    : `<div class="empty" style="margin:6px 0">当前没有 adb 可见设备。插上 USB 或开启无线调试后这里会自动出现。</div>`;
+  const pairHtml = pairable.length
+    ? `<div class="sub" style="margin-top:16px">通过无线调试广播出来的待配对设备 · ${pairable.length} 台</div>
+       <div style="margin-top:8px">
+         ${pairable.map(p => `<div class="dev-row" style="grid-template-columns:1fr auto">
+            <div><div class="title">${escapeHtml(p.serviceName)}</div>
+            <div class="meta">${escapeHtml(p.host)}:${p.port} · ${p.kind === 'pairing' ? '需配对码' : '已配对可直连'}${p.known ? ' · 已保存' : ''}</div></div>
+            <div class="actions"><button class="primary" data-pair="${escapeHtml(JSON.stringify({ host: p.host, port: p.port, kind: p.kind, serviceName: p.serviceName }))}">${p.kind === 'pairing' ? '用配对码配对' : '一键连接'}</button></div>
+          </div>`).join('')}
+       </div>`
+    : '';
+  out.innerHTML = `
+    <div class="kv-grid">
+      <div><span>连接模式</span><b>${escapeHtml(String(mode))}</b></div>
+      <div><span>状态</span><b>${escapeHtml(String(stateLabel))}</b></div>
+      <div><span>当前端点</span><b class="mono">${escapeHtml(String(endpoint))}</b></div>
+    </div>
+    <div class="sub" style="margin-top:18px">已连接的 adb 设备 · ${devices.length} 台</div>
+    <div class="dev-list" style="margin-top:8px">${devHtml}</div>
+    ${pairHtml}
+  `;
+  out.querySelectorAll('[data-pair]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      let p; try { p = JSON.parse(btn.dataset.pair); } catch { return; }
+      await pairDiscoveredDevice(p);
+      await refreshConnStatus();
     });
   });
 }
@@ -1324,6 +1577,7 @@ async function bootstrap() {
   renderCenter();
   await refreshDevices();
   startScreenshotPolling();
+  startDevicePolling();
 }
 
 bootstrap().catch(error => {

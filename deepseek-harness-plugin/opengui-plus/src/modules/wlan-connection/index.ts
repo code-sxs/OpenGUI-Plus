@@ -108,6 +108,47 @@ export interface DiscoveredDevice {
   readonly name?: string
 }
 
+/** Wireless-debugging services surfaced via mDNS that aren't yet in `adb devices`. */
+export interface DiscoveredPairable {
+  readonly serviceName: string
+  readonly host: string
+  readonly port: number
+  /** `pairing` = `_adb-tls-pairing._tcp` (needs a code), `connect` = `_adb._tcp` (already paired). */
+  readonly kind: 'pairing' | 'connect'
+  readonly known: boolean
+}
+
+/**
+ * Reduce mDNS services to the deduped, "not yet connected" set the UI cares
+ * about. Exported so the regression test can exercise the merge logic
+ * without standing up the full host.
+ */
+export function pickPairable(
+  services: readonly MdnsService[],
+  connectedEndpoints: ReadonlySet<string>,
+  knownEndpoints: ReadonlySet<string>,
+): readonly DiscoveredPairable[] {
+  const seen = new Set<string>()
+  const out: DiscoveredPairable[] = []
+  for (const svc of services) {
+    const type = svc.type.toLowerCase()
+    const isPairing = type.includes(MDNS_PAIRING_TYPE)
+    const isConnect = type.includes(MDNS_CONNECT_TYPE)
+    if (!isPairing && !isConnect) continue
+    const key = `${svc.host}:${svc.port}`
+    if (seen.has(key) || connectedEndpoints.has(key)) continue
+    seen.add(key)
+    out.push({
+      serviceName: svc.name,
+      host: svc.host,
+      port: svc.port,
+      kind: isPairing ? 'pairing' : 'connect',
+      known: knownEndpoints.has(key),
+    })
+  }
+  return out
+}
+
 const DEFAULT_PORT = 5555
 const PREF_KEY = 'wlan-connection'
 const DEVICES_KEY = 'wlan-devices'
@@ -383,10 +424,10 @@ export function createWirelessConnectionModule(): PlusModule {
   }
 
   /** `adb mdns services`, parsed. Empty when adb is unavailable. */
-  async function mdnsRows(): Promise<readonly MdnsService[]> {
+  async function mdnsRows(timeoutMs: number = MDNS_TIMEOUT_MS): Promise<readonly MdnsService[]> {
     const runner = adb()
     if (runner === null) return []
-    const result = await runner.run(['mdns', 'services'], MDNS_TIMEOUT_MS)
+    const result = await runner.run(['mdns', 'services'], timeoutMs)
     return parseMdnsServices(`${result.stdout}${result.stderr}`)
   }
 
@@ -639,7 +680,19 @@ export function createWirelessConnectionModule(): PlusModule {
 
       /** Probe adb and report every row, marked with whether we remember it. */
       async discover() {
-        const online = await rows()
+        // Run `adb devices -l` and `adb mdns services` in parallel so the scan
+        // surfaces both already-connected devices AND phones that have just
+        // opened wireless debugging (those never appear in `adb devices` until
+        // the user pairs + connects). Keep the mDNS probe short — 5s is
+        // generous on a real LAN and prevents the UI from hanging when adb's
+        // mNS responder (Bonjour on Windows) is not installed.
+        let mdnsError: string | undefined
+        const mdnsPromise = mdnsRows(5_000).catch((error: unknown) => {
+          mdnsError = error instanceof Error ? error.message : String(error)
+          return [] as readonly MdnsService[]
+        })
+        const [online, services] = await Promise.all([rows(), mdnsPromise])
+
         const found: DiscoveredDevice[] = online.map((row) => {
           const profile = matchProfile(row)
           return {
@@ -651,7 +704,21 @@ export function createWirelessConnectionModule(): PlusModule {
             ...(profile === undefined ? {} : { deviceId: profile.id, name: profile.name }),
           }
         })
-        return { devices: found, mode: preference.mode }
+
+        const connectedEndpoints = new Set(
+          online
+            .map(row => splitEndpoint(row.serial, DEFAULT_PORT))
+            .filter((e): e is { host: string; port: number } => e !== undefined)
+            .map(e => `${e.host}:${e.port}`),
+        )
+        const knownEndpoints = new Set(
+          devices
+            .filter(d => d.transport === 'wifi' && d.wifi !== undefined)
+            .map(d => `${d.wifi!.host}:${d.wifi!.port}`),
+        )
+        const pairable = pickPairable(services, connectedEndpoints, knownEndpoints)
+
+        return { devices: found, pairable, mdnsError, mode: preference.mode }
       },
 
       async listDevices() {

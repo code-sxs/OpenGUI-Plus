@@ -35,6 +35,17 @@ node lib/cli.js serve --port 8900 --data-dir /path/to/data
 
 新增 `screencap` 方法：通过 adb 的 `exec-out screencap -p` 二进制通道（新增 `AdbRunner.execOut`）截取设备屏幕 PNG，写入 `<dataDir>/screenshots/`，供工作台设备网格实时轮询投屏；无 `execOut` 时自动回退到 `shell screencap -p` + `pull` 方案。
 
+## 设备发现与实时刷新
+
+工作台的设备网格不是「刷新一次才出现」，而是**实时**的：
+
+- `wlan-connection.discover` 现在**并行**探测两类来源：
+  1. `adb devices -l`（已连接的 USB / 已配对 WiFi 设备）；
+  2. `adb mdns services`（手机在「开发者选项 → 无线调试」里开着的待配对设备，配对前不出现在 `devices -l` 里）。
+  这些待配对设备以 `pairable`（含 `host / port / kind / known`）一并返回，工作台据此在网格里直接给出「用配对码配对 / 一键连接」按钮。
+- 前端每 4 秒轮询一次 `discover`，**插上 USB 或新开无线调试的手机无需手动刷新就会出现在设备网格**；若电脑没装 Bonjour（Windows）或 adb mDNS 被防火墙拦截，`mdnsError` 会被捕获并在网格下方给出提示，此时可改用「设备」面板的「手动 WiFi」或「扫二维码」方式。
+- 「设备」面板里的**连接状态**子页打开即自动展示：当前连接模式、连接状态、已连 adb 设备列表，以及通过无线调试广播出来的待配对设备；该页同样每 4 秒自动刷新，不再只显示按钮点击后的原始 JSON。
+
 ## 零依赖 HTTP API
 
 控制台不依赖任何 Web 框架，所有能力都通过这些端点暴露，前端只是它们的可视化外壳：
