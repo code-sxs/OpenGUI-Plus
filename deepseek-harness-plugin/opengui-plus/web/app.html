@@ -74,7 +74,6 @@
   /* ---------- main: dashboard | module panel ---------- */
   .main { position: relative; overflow: hidden; }
   .layout { display: grid; grid-template-columns: 1fr 56px; height: 100%; }
-  .layout.with-panel { grid-template-columns: 1fr 56px 560px; }
   .center { overflow: auto; padding: 18px 22px; }
   .strip {
     background: var(--surface); border-left: 1px solid var(--line);
@@ -91,12 +90,31 @@
   .strip button.active { background: var(--brand-soft); color: var(--brand); }
   .strip button .ico { font-size: 18px; line-height: 1; }
   .strip .sep { height: 1px; background: var(--line); margin: 4px 8px; }
-  .panel { background: var(--surface); border-left: 1px solid var(--line); overflow: auto; }
+
+  /* ---------- module dialog: 右侧模块点击后以弹窗打开 ---------- */
+  .modal-mask {
+    position: fixed; inset: 0; z-index: 300;
+    background: rgba(16,18,30,.42); backdrop-filter: blur(3px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 28px 24px; animation: maskIn .16s ease-out;
+  }
+  .panel {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-l); box-shadow: var(--shadow-2);
+    width: min(980px, 100%); max-height: min(88vh, 900px);
+    display: flex; flex-direction: column; overflow: hidden;
+    animation: dialogIn .2s cubic-bezier(.2,.85,.3,1.05);
+  }
+  @keyframes maskIn { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes dialogIn {
+    from { opacity: 0; transform: translateY(12px) scale(.985); }
+    to   { opacity: 1; transform: none; }
+  }
 
   /* ---------- device grid ---------- */
   .device-grid {
-    display: grid; gap: 16px;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    display: grid; gap: 16px; align-content: start;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   }
   .device-card {
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-l);
@@ -184,7 +202,7 @@
   /* ---------- module panel header ---------- */
   .panel header {
     padding: 18px 22px; border-bottom: 1px solid var(--line);
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; gap: 10px; flex: 0 0 auto;
   }
   .panel header .ico { font-size: 22px; }
   .panel header h2 { margin: 0; font-size: 16px; }
@@ -195,7 +213,7 @@
     display: flex; align-items: center; justify-content: center;
   }
   .panel header .x:hover { background: var(--line); }
-  .panel .body { padding: 18px 22px; }
+  .panel .body { padding: 18px 22px; overflow: auto; flex: 1 1 auto; }
 
   /* ---------- device management specific ---------- */
   .dev-list { display: flex; flex-direction: column; gap: 10px; }
@@ -239,8 +257,9 @@
 
   /* ---------- responsive ---------- */
   @media (max-width: 960px) {
-    .layout, .layout.with-panel { grid-template-columns: 1fr 52px; }
-    .layout.with-panel .panel { position: fixed; inset: 56px 52px 0 0; z-index: 50; box-shadow: var(--shadow-2); }
+    .layout { grid-template-columns: 1fr 52px; }
+    .modal-mask { padding: 12px; }
+    .panel { max-height: 94vh; }
   }
 </style>
 </head>
@@ -258,10 +277,10 @@
     <div class="layout" id="layout">
       <section class="center" id="center"></section>
       <aside class="strip" id="strip"></aside>
-      <aside class="panel" id="panel" hidden></aside>
     </div>
   </div>
 </div>
+<div id="modal-root"></div>
 <div id="toast" class="toast"></div>
 
 <script>
@@ -360,7 +379,11 @@ function renderStrip() {
     </button>
   `).join('');
   strip.querySelectorAll('[data-strip]').forEach(btn => {
-    btn.addEventListener('click', () => openModule(btn.dataset.strip));
+    // 再点一次同一个模块 = 关闭弹窗
+    btn.addEventListener('click', () => {
+      if (state.view === btn.dataset.strip) closeModule();
+      else openModule(btn.dataset.strip);
+    });
   });
 }
 
@@ -372,33 +395,43 @@ function renderProjectSelect() {
   sel.innerHTML = opts;
 }
 
+// 左侧永远是设备投屏网格：模块改成弹窗后，网格不再被面板挤走，
+// 弹窗打开时它依然在背后实时刷新。重新渲染时保留滚动位置，避免轮询把页面跳回顶部。
 function renderCenter() {
   const c = document.getElementById('center');
-  if (state.view === 'dashboard') c.innerHTML = renderDashboard();
-  else c.innerHTML = '';
+  const top = c.scrollTop;
+  c.innerHTML = renderDashboard();
+  c.scrollTop = top;
   bindDashboardEvents();
 }
 
 function renderPanel() {
-  const panel = document.getElementById('panel');
-  const layout = document.getElementById('layout');
+  const root = document.getElementById('modal-root');
   const mod = state.view !== 'dashboard' ? STRIP.find(m => m.id === state.view) : null;
-  if (!mod) { panel.hidden = true; layout.classList.remove('with-panel'); return; }
-  panel.hidden = false;
-  layout.classList.add('with-panel');
+  if (!mod) { root.innerHTML = ''; document.body.style.overflow = ''; return; }
+  document.body.style.overflow = 'hidden';
   document.getElementById('crumbs').textContent = mod.name;
-  panel.innerHTML = `
-    <header>
-      <span class="ico">${mod.ico}</span>
-      <div>
-        <h2>${mod.name}</h2>
-        <div class="sub">${mod.hint}</div>
+  root.innerHTML = `
+    <div class="modal-mask" id="modal-mask">
+      <div class="panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(mod.name)}">
+        <header>
+          <span class="ico">${mod.ico}</span>
+          <div>
+            <h2>${mod.name}</h2>
+            <div class="sub">${mod.hint}</div>
+          </div>
+          <button class="x" id="panel-close" title="关闭（Esc）">×</button>
+        </header>
+        <div class="body" id="panel-body">${modules[mod.id].render(state) ?? ''}</div>
       </div>
-      <button class="x" id="panel-close" title="关闭">×</button>
-    </header>
-    <div class="body" id="panel-body">${modules[mod.id].render(state) ?? ''}</div>
+    </div>
   `;
   document.getElementById('panel-close').addEventListener('click', closeModule);
+  // 点遮罩空白处关闭；点在弹窗内部不关。用 mousedown 而不是 click，
+  // 否则从弹窗内拖选文本松手时会误判成点遮罩。
+  document.getElementById('modal-mask').addEventListener('mousedown', (event) => {
+    if (event.target.id === 'modal-mask') closeModule();
+  });
   modules[mod.id].bind?.(state);
 }
 
@@ -425,7 +458,7 @@ function renderDashboard() {
       ? `<div class="device-grid">${cards}</div>`
       : `<div class="empty">
            <div class="big">还没有在线的设备</div>
-           <div>把手机用 USB 连上电脑，或在「设备」面板里扫码配对。</div>
+           <div>把手机用 USB 连上电脑（记得点「允许 USB 调试」），或点右侧「设备」模块用配对码 / 扫码连接。</div>
          </div>`}
     ${pairable
       ? `<div style="margin-top:24px">
@@ -515,7 +548,7 @@ async function refreshDevices({ silent = false } = {}) {
   state.mdnsError = result.value?.mdnsError ?? undefined;
   const live = new Set(state.devices.map(d => d.serial));
   for (const key of [...state.screenshots.keys()]) if (!live.has(key)) state.screenshots.delete(key);
-  if (state.view === 'dashboard') renderCenter();
+  renderCenter();
 }
 
 async function takeScreenshot(serial) {
@@ -534,21 +567,21 @@ function startScreenshotPolling() {
       const r = await call('wlan-connection.screencap', { serial: d.serial });
       if (r.ok) state.screenshots.set(d.serial, { url: `/files/${encodeURI(r.value.path)}?ts=${Date.now()}`, ts: r.value.takenAt });
     }
-    if (state.view === 'dashboard') renderCenter();
+    renderCenter();
   };
   state.refreshTimer = setInterval(tick, 2500);
 }
 
 // Poll discover() so a freshly plugged-in USB phone (or a phone that just
 // opened wireless debugging) shows up in the device grid without a manual
-// refresh. Re-render only when we are actually on the dashboard.
+// refresh. The grid is always mounted now (modules open as dialogs), so the
+// re-render happens no matter which module is currently open.
 function startDevicePolling() {
   if (state.deviceTimer) return;
   const tick = async () => {
     await refreshDevices({ silent: true });
-    if (state.view === 'wlan-connection') refreshConnStatus();
-  };
-  state.deviceTimer = setInterval(tick, 4000);
+  if (state.view === 'wlan-connection') refreshConnStatus();
+};  state.deviceTimer = setInterval(tick, 4000);
 }
 
 /* ====================================================================== */
@@ -559,7 +592,6 @@ function openModule(id, focusSerial) {
   state.view = id;
   state.focusSerial = focusSerial;
   renderStrip();
-  renderCenter();
   renderPanel();
 }
 function closeModule() {
@@ -1645,6 +1677,11 @@ async function bootstrap() {
   startScreenshotPolling();
   startDevicePolling();
 }
+
+// Esc 关闭模块弹窗
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && state.view !== 'dashboard') closeModule();
+});
 
 bootstrap().catch(error => {
   console.error('bootstrap failed', error);
