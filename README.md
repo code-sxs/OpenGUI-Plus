@@ -39,7 +39,7 @@ OpenGUI-Plus is more than a renamed fork. It adds a **standalone, persistent, co
 
 | # | Module | What you can do | Why it matters |
 |---|---|---|---|
-| 1 | **Wireless debugging** `wlan-connection` | USB / WiFi / auto modes; remembered devices; live status; Android 11+ pairing via **six-digit code** or **QR code** (QR resolves the pairing port through mDNS) | Stop re-entering endpoints, and stop mixing up the pairing port with the connect port |
+| 1 | **Wireless debugging** `wlan-connection` | Connect over USB, WiFi, or auto mode; save devices; inspect live status; pair Android 11+ devices | Stop re-entering endpoints and manually switching transports |
 | 2 | **Snippet library** `snippet-library` | Give long commands aliases, tags, and autocomplete; import/export JSON | Turn repetitive ADB / GUI commands into reusable, portable building blocks |
 | 3 | **Action templates** `action-template` | Record multi-step actions, extract `{{variables}}`, and run with parameters | Convert one-off manual work into repeatable automation |
 | 4 | **Scheduler** `scheduler` | Run one-shot, daily, weekly, or Cron jobs against snippets, templates, or flows | Automate inspections, batches, and recurring mobile operations |
@@ -92,9 +92,6 @@ For step-by-step single-module usage, parameter formats, CLI / console operation
 - [12 Combination workflow](./tutorials/12-组合实战工作流.md)
 - [13 Troubleshooting, backup, and security](./tutorials/13-排障备份与安全运维.md)
 - [14 Developer extension guide](./tutorials/14-开发者扩展指南.md)
-- [15 Complete DeepSeek Harness validation prompt](./tutorials/15-DeepSeek-Harness-完整功能验证提示词.md)
-
-If OpenGUI is already installed, **do not uninstall it**. Give DeepSeek Harness the [complete validation prompt](./tutorials/15-DeepSeek-Harness-完整功能验证提示词.md) and let it test the local source, isolated test data, and existing installation in layers; real-device actions require explicit confirmation.
 
 ## Demo
 

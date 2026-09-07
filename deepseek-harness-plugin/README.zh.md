@@ -14,7 +14,7 @@
 
 | 模块 | 主要功能 |
 |---|---|
-| **无线调试连接** `wlan-connection` | USB / WiFi / 自动连接、记住设备、实时状态、Android 11+ 六位配对码配对与二维码配对（mDNS 自动解析配对端口） |
+| **无线调试连接** `wlan-connection` | USB / WiFi / 自动连接、记住设备、实时状态、Android 11+ 配对 |
 | **快捷指令库** `snippet-library` | 指令别名、标签、自动补全、JSON 导入导出 |
 | **动作模板录制** `action-template` | 多步录制、`{{变量}}` 参数化、一键执行 |
 | **定时任务** `scheduler` | 单次 / 每天 / 每周 / Cron，执行指令、模板和流程 |
