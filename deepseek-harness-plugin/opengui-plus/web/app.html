@@ -1,0 +1,1335 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenGUI-Plus · 设备工作台</title>
+<style>
+  /* ---------- design tokens (workbuddy-flavored) ---------- */
+  :root {
+    --bg: #f6f7fb;
+    --surface: #ffffff;
+    --surface-2: #f1f3fa;
+    --ink: #1c1d29;
+    --ink-2: #4a4d63;
+    --ink-3: #7d8095;
+    --line: #e5e7f0;
+    --line-2: #d6d9e6;
+    --brand: #4f46e5;
+    --brand-2: #7c3aed;
+    --brand-soft: #eef0ff;
+    --accent: #f97316;
+    --accent-soft: #fff1e6;
+    --ok: #10b981;
+    --warn: #f59e0b;
+    --err: #ef4444;
+    --shadow-1: 0 1px 2px rgba(28,29,41,.04), 0 2px 8px rgba(28,29,41,.04);
+    --shadow-2: 0 8px 32px rgba(28,29,41,.10);
+    --radius-s: 8px;
+    --radius-m: 14px;
+    --radius-l: 22px;
+    --font: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.55;
+    overflow: hidden;
+  }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+  button { font-family: inherit; font-size: 13px; cursor: pointer; }
+  input, select, textarea {
+    font-family: inherit; font-size: 13px; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-s); padding: 7px 10px; outline: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
+  textarea { resize: vertical; min-height: 60px; }
+  label { display: block; font-size: 12.5px; color: var(--ink-2); margin-bottom: 4px; }
+
+  /* ---------- shell ---------- */
+  .app { display: grid; grid-template-rows: 56px 1fr; height: 100vh; }
+  .topbar {
+    display: flex; align-items: center; gap: 16px;
+    padding: 0 20px; background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  .topbar .brand { font-weight: 700; font-size: 16px; letter-spacing: .2px; }
+  .topbar .brand .dot { color: var(--brand-2); }
+  .topbar .crumbs { color: var(--ink-3); font-size: 12.5px; }
+  .topbar .spacer { flex: 1; }
+  .topbar .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; background: var(--surface-2);
+    border-radius: 999px; font-size: 12px; color: var(--ink-2);
+  }
+  .topbar .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+  .topbar a { color: var(--brand); text-decoration: none; font-size: 12.5px; }
+  .topbar a:hover { text-decoration: underline; }
+  .topbar select { padding: 4px 8px; font-size: 12.5px; }
+
+  /* ---------- main: dashboard | module panel ---------- */
+  .main { position: relative; overflow: hidden; }
+  .layout { display: grid; grid-template-columns: 1fr 56px; height: 100%; }
+  .layout.with-panel { grid-template-columns: 1fr 56px 560px; }
+  .center { overflow: auto; padding: 18px 22px; }
+  .strip {
+    background: var(--surface); border-left: 1px solid var(--line);
+    display: flex; flex-direction: column; align-items: stretch;
+    padding: 6px 0; gap: 2px;
+  }
+  .strip button {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; padding: 10px 4px; min-height: 56px;
+    background: transparent; color: var(--ink-2); border: 0; cursor: pointer;
+    border-radius: 0; font-size: 11px; line-height: 1.15; transition: background .15s;
+  }
+  .strip button:hover { background: var(--surface-2); color: var(--ink); }
+  .strip button.active { background: var(--brand-soft); color: var(--brand); }
+  .strip button .ico { font-size: 18px; line-height: 1; }
+  .strip .sep { height: 1px; background: var(--line); margin: 4px 8px; }
+  .panel { background: var(--surface); border-left: 1px solid var(--line); overflow: auto; }
+
+  /* ---------- device grid ---------- */
+  .device-grid {
+    display: grid; gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+  .device-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-l);
+    box-shadow: var(--shadow-1); overflow: hidden; display: flex; flex-direction: column;
+  }
+  .device-card .frame {
+    aspect-ratio: 9/19.5; background: #111; position: relative; overflow: hidden;
+  }
+  .device-card .frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .device-card .frame .ph {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #888; font-size: 12.5px; flex-direction: column; gap: 6px;
+  }
+  .device-card .frame .ph .ring {
+    width: 24px; height: 24px; border: 2px solid #444; border-top-color: #aaa;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .device-card .body { padding: 10px 12px; display: flex; align-items: center; gap: 8px; }
+  .device-card .body .name { font-weight: 600; }
+  .device-card .body .serial { color: var(--ink-3); font-size: 12px; flex: 1; }
+  .device-card .body .status { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+  .device-card .body .status.off { background: var(--ink-3); }
+  .device-card .body .status.err { background: var(--err); }
+  .device-card .actions { display: flex; gap: 6px; padding: 0 12px 12px; flex-wrap: wrap; }
+  .device-card .actions button {
+    background: var(--surface-2); color: var(--ink-2); border: 0;
+    border-radius: 999px; padding: 5px 10px; font-size: 12px;
+  }
+  .device-card .actions button:hover { background: var(--brand-soft); color: var(--brand); }
+
+  /* ---------- generic cards / forms ---------- */
+  .empty {
+    border: 1.5px dashed var(--line-2); border-radius: var(--radius-l);
+    padding: 40px 20px; text-align: center; color: var(--ink-3); background: var(--surface);
+  }
+  .empty .big { font-size: 16px; color: var(--ink-2); margin-bottom: 6px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-l);
+    box-shadow: var(--shadow-1); padding: 18px 20px; margin-bottom: 16px;
+  }
+  .card h3 { margin: 0 0 4px; font-size: 15px; }
+  .card .sub { color: var(--ink-3); font-size: 12.5px; margin-bottom: 14px; }
+  .card .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  .card .field { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
+  .card .field.grow { flex: 1; }
+  .card button.primary {
+    background: var(--brand); color: #fff; border: 0; padding: 8px 14px;
+    border-radius: var(--radius-s); font-weight: 500;
+  }
+  .card button.primary:hover { background: #4338ca; }
+  .card button.ghost {
+    background: var(--surface-2); color: var(--ink-2); border: 0; padding: 7px 12px;
+    border-radius: var(--radius-s);
+  }
+  .card button.ghost:hover { background: var(--line); }
+  .card button.danger {
+    background: transparent; color: var(--err); border: 1px solid #fecaca;
+    padding: 7px 12px; border-radius: var(--radius-s);
+  }
+  .card button.danger:hover { background: #fef2f2; }
+  .card .table { width: 100%; border-collapse: collapse; }
+  .card .table th, .card .table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .card .table th { color: var(--ink-3); font-weight: 500; font-size: 12px; }
+  .card .table tr:hover td { background: var(--surface-2); }
+  .card .table .tag { display: inline-block; background: var(--brand-soft); color: var(--brand); padding: 2px 8px; border-radius: 999px; font-size: 11.5px; margin-right: 4px; }
+  .card .table .ok { color: var(--ok); font-weight: 500; }
+  .card .table .err { color: var(--err); }
+  .card .table .off { color: var(--ink-3); }
+
+  .switch { display: inline-flex; background: var(--surface-2); border-radius: 999px; padding: 2px; }
+  .switch button { background: transparent; color: var(--ink-2); border: 0; padding: 5px 12px; border-radius: 999px; font-size: 12.5px; }
+  .switch button.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 999px;
+    font-size: 13px; box-shadow: var(--shadow-2); opacity: 0; transition: opacity .25s;
+    pointer-events: none; z-index: 1000; max-width: 80vw;
+  }
+  .toast.show { opacity: 0.95; }
+  .toast.err { background: var(--err); }
+  .toast.ok { background: var(--ok); }
+
+  /* ---------- module panel header ---------- */
+  .panel header {
+    padding: 18px 22px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .panel header .ico { font-size: 22px; }
+  .panel header h2 { margin: 0; font-size: 16px; }
+  .panel header .sub { color: var(--ink-3); font-size: 12.5px; }
+  .panel header .x {
+    margin-left: auto; width: 28px; height: 28px; border-radius: 50%;
+    background: var(--surface-2); border: 0; color: var(--ink-2); font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .panel header .x:hover { background: var(--line); }
+  .panel .body { padding: 18px 22px; }
+
+  /* ---------- device management specific ---------- */
+  .dev-list { display: flex; flex-direction: column; gap: 10px; }
+  .dev-row {
+    border: 1px solid var(--line); border-radius: var(--radius-m); padding: 12px 14px;
+    background: var(--surface); display: grid; grid-template-columns: 1fr auto; gap: 8px;
+  }
+  .dev-row .title { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+  .dev-row .meta { color: var(--ink-3); font-size: 12px; margin-top: 2px; }
+  .dev-row .pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .dev-row .pills .tag { background: var(--brand-soft); color: var(--brand); padding: 2px 8px; border-radius: 999px; font-size: 11.5px; }
+  .dev-row .pills .tag.muted { background: var(--surface-2); color: var(--ink-2); }
+  .dev-row .pills .tag.warn { background: #fff7ed; color: #c2410c; }
+  .dev-row .actions { display: flex; gap: 6px; align-items: start; }
+  .dev-row .actions button {
+    background: var(--surface-2); color: var(--ink-2); border: 0;
+    border-radius: var(--radius-s); padding: 6px 10px; font-size: 12px;
+  }
+  .dev-row .actions button:hover { background: var(--brand-soft); color: var(--brand); }
+  .dev-row .actions button.danger { color: var(--err); }
+  .dev-row .actions button.danger:hover { background: #fef2f2; }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
+  .tabs button {
+    background: transparent; color: var(--ink-2); border: 0;
+    padding: 7px 12px; border-radius: var(--radius-s); font-size: 13px;
+  }
+  .tabs button.on { background: var(--brand-soft); color: var(--brand); }
+
+  .qrbox {
+    display: flex; align-items: center; gap: 18px; padding: 14px;
+    background: var(--surface-2); border-radius: var(--radius-m);
+  }
+  .qrbox img { width: 160px; height: 160px; background: #fff; border-radius: var(--radius-s); }
+  .qrbox .info { font-size: 12.5px; color: var(--ink-2); }
+  .qrbox .info .h { font-size: 14px; font-weight: 500; color: var(--ink); margin-bottom: 4px; }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 960px) {
+    .layout, .layout.with-panel { grid-template-columns: 1fr 52px; }
+    .layout.with-panel .panel { position: fixed; inset: 56px 52px 0 0; z-index: 50; box-shadow: var(--shadow-2); }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">Open<span class="dot">·</span>GUI <span style="color:var(--ink-3);font-weight:500">工作台</span></div>
+    <span class="crumbs" id="crumbs">设备</span>
+    <div class="spacer"></div>
+    <span class="pill"><span class="dot"></span><span id="conn-state">已连接</span></span>
+    <select id="project-select" title="当前项目组"></select>
+    <a href="/index.html" target="_blank" rel="noopener">开发者控制台 ↗</a>
+  </header>
+  <div class="main">
+    <div class="layout" id="layout">
+      <section class="center" id="center"></section>
+      <aside class="strip" id="strip"></aside>
+      <aside class="panel" id="panel" hidden></aside>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+/* ========================================================================
+ *  Module catalogue
+ *  Each entry is a friendly face for one of the 10 backend modules.
+ *  Modules expose: { id, name, ico, hint, render(state), bind(state) }.
+ *  The `render` callback returns the inner HTML for the module panel. No
+ *  method names, no raw JSON — the user only sees labelled buttons and forms.
+ * ====================================================================== */
+
+const STRIP = [
+  { id: 'wlan-connection',    name: '设备',     ico: '📱', hint: '连接手机、扫码配对、统一管理设备' },
+  { id: 'snippet-library',    name: '指令',     ico: '⚡', hint: '把常用 adb 命令收藏成可复用的指令' },
+  { id: 'action-template',    name: '模板',     ico: '🎬', hint: '录制操作流程，一键回放' },
+  { id: 'scheduler',          name: '定时',     ico: '⏰', hint: '按计划自动执行指令或模板' },
+  { id: 'project-group',      name: '项目',     ico: '🗂', hint: '按项目隔离数据，切换即重置' },
+  { id: 'demo-recorder',      name: '演示',     ico: '📼', hint: '录一段带截图的演示给 AI 看' },
+  { id: 'workflow-marketplace', name: '市场',  ico: '🛍', hint: '下载社区模板，发布自己的模板' },
+  { id: 'feedback-rl',        name: '反馈',     ico: '🧠', hint: '让 AI 记住每次失败和解决办法' },
+  { id: 'device-pool',        name: '设备池',   ico: '🖧', hint: '多机协同与任务队列' },
+  { id: 'replay',             name: '回放',     ico: '🎞', hint: '把执行过程录成可分享的影片' },
+];
+
+/* ====================================================================== */
+/* API helpers                                                             */
+/* ====================================================================== */
+
+function isResultEnvelope(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (typeof value.ok !== 'boolean') return false;
+  return value.ok === false ? typeof value.error === 'string' : 'value' in value;
+}
+
+async function call(target, input = {}) {
+  let response;
+  try { response = await fetch('/api/call', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ target, input }) }); }
+  catch (error) { return { ok: false, error: '网络错误：' + (error?.message ?? String(error)) }; }
+  let json;
+  try { json = await response.json(); }
+  catch { return { ok: false, error: `http ${response.status}: 非 JSON 响应` }; }
+  if (!json.ok) return { ok: false, error: json.error ?? `http ${response.status}` };
+  const inner = isResultEnvelope(json.value) ? json.value : null;
+  const payload = inner ?? json;
+  if (payload.ok === true) return { ok: true, value: payload.value };
+  if (payload.ok === false) return { ok: false, error: payload.error ?? '未给出原因' };
+  return { ok: true, value: payload };
+}
+
+async function getStatus() {
+  try { const r = await fetch('/api/status'); return await r.json(); }
+  catch { return { activeProjectId: 'default', modules: [] }; }
+}
+
+/* ====================================================================== */
+/* Toast                                                                   */
+/* ====================================================================== */
+const toastEl = document.getElementById('toast');
+let toastTimer = null;
+function toast(msg, kind = '') {
+  toastEl.textContent = msg;
+  toastEl.className = 'toast show' + (kind ? ' ' + kind : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.className = 'toast', 2400);
+}
+
+/* ====================================================================== */
+/* State                                                                   */
+/* ====================================================================== */
+const state = {
+  view: 'dashboard',          // 'dashboard' | moduleId
+  status: null,
+  projects: [],
+  currentProject: null,
+  panel: null,                // module descriptor
+  devices: [],                // discovered live devices
+  screenshots: new Map(),     // serial -> { url, ts }
+  refreshTimer: null,
+  focusSerial: null,
+  tplRecording: null,
+};
+
+/* ====================================================================== */
+/* Render: topbar, strip, dashboard, panel                                */
+/* ====================================================================== */
+
+function renderStrip() {
+  const strip = document.getElementById('strip');
+  strip.innerHTML = STRIP.map(m => `
+    <button data-strip="${m.id}" class="${state.view === m.id ? 'active' : ''}" title="${m.name} · ${m.hint}">
+      <span class="ico">${m.ico}</span>
+      <span>${m.name}</span>
+    </button>
+  `).join('');
+  strip.querySelectorAll('[data-strip]').forEach(btn => {
+    btn.addEventListener('click', () => openModule(btn.dataset.strip));
+  });
+}
+
+function renderProjectSelect() {
+  const sel = document.getElementById('project-select');
+  const opts = (state.projects.length ? state.projects : [{ id: 'default', name: 'default' }])
+    .map(p => `<option value="${escapeHtml(p.id)}" ${p.id === state.currentProject ? 'selected' : ''}>${escapeHtml(p.name)} · ${escapeHtml(p.id)}</option>`)
+    .join('');
+  sel.innerHTML = opts;
+}
+
+function renderCenter() {
+  const c = document.getElementById('center');
+  if (state.view === 'dashboard') c.innerHTML = renderDashboard();
+  else c.innerHTML = '';
+  bindDashboardEvents();
+}
+
+function renderPanel() {
+  const panel = document.getElementById('panel');
+  const layout = document.getElementById('layout');
+  const mod = state.view !== 'dashboard' ? STRIP.find(m => m.id === state.view) : null;
+  if (!mod) { panel.hidden = true; layout.classList.remove('with-panel'); return; }
+  panel.hidden = false;
+  layout.classList.add('with-panel');
+  document.getElementById('crumbs').textContent = mod.name;
+  panel.innerHTML = `
+    <header>
+      <span class="ico">${mod.ico}</span>
+      <div>
+        <h2>${mod.name}</h2>
+        <div class="sub">${mod.hint}</div>
+      </div>
+      <button class="x" id="panel-close" title="关闭">×</button>
+    </header>
+    <div class="body" id="panel-body">${modules[mod.id].render(state) ?? ''}</div>
+  `;
+  document.getElementById('panel-close').addEventListener('click', closeModule);
+  modules[mod.id].bind?.(state);
+}
+
+/* ====================================================================== */
+/* Dashboard view                                                          */
+/* ====================================================================== */
+
+function renderDashboard() {
+  const cards = state.devices.map(d => renderDeviceCard(d)).join('');
+  return `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <h2 style="margin:0;font-size:18px">已连接的设备</h2>
+      <span class="pill" style="background:var(--brand-soft);color:var(--brand)">
+        ${state.devices.length} 台在线
+      </span>
+      <div style="flex:1"></div>
+      <button class="ghost" id="dash-refresh" style="background:var(--surface-2);border:0;border-radius:8px;padding:6px 12px;color:var(--ink-2)">↻ 重新检测</button>
+    </div>
+    ${cards
+      ? `<div class="device-grid">${cards}</div>`
+      : `<div class="empty">
+           <div class="big">还没有在线的设备</div>
+           <div>把手机用 USB 连上电脑，或在「设备」面板里扫码配对。</div>
+         </div>`}
+  `;
+}
+
+function renderDeviceCard(d) {
+  const last = state.screenshots.get(d.serial);
+  const lastTs = last?.ts ? `<span class="mono" style="font-size:11px;color:var(--ink-3)">${new Date(last.ts).toLocaleTimeString()}</span>` : '';
+  return `
+    <div class="device-card" data-serial="${escapeHtml(d.serial)}">
+      <div class="frame">
+        ${last?.url
+          ? `<img src="${last.url}" alt="设备屏幕" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',innerHTML:'<div class=ring></div><div>截图失败</div>'}))">`
+          : `<div class="ph"><div class="ring"></div><div>连接中…</div></div>`}
+      </div>
+      <div class="body">
+        <span class="status ${d.state === 'device' ? '' : 'off'}"></span>
+        <span class="name">${escapeHtml(d.name ?? d.model ?? d.serial)}</span>
+        ${lastTs}
+        <span class="serial mono">${escapeHtml(d.serial)}</span>
+      </div>
+      <div class="actions">
+        <button data-act="add" data-serial="${escapeHtml(d.serial)}" data-name="${escapeHtml(d.name ?? d.serial)}">+ 加入管理</button>
+        <button data-act="screencap" data-serial="${escapeHtml(d.serial)}">手动截图</button>
+        <button data-act="open" data-serial="${escapeHtml(d.serial)}">查看详情</button>
+      </div>
+    </div>
+  `;
+}
+
+function bindDashboardEvents() {
+  document.getElementById('dash-refresh')?.addEventListener('click', refreshDevices);
+  document.querySelectorAll('[data-act]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const act = btn.dataset.act;
+      const serial = btn.dataset.serial;
+      if (act === 'add') return addDeviceFromDiscover(serial, btn.dataset.name);
+      if (act === 'screencap') return takeScreenshot(serial);
+      if (act === 'open') return openModule('wlan-connection', serial);
+    });
+  });
+}
+
+/* ====================================================================== */
+/* Device grid: discovery + screencap polling                             */
+/* ====================================================================== */
+
+async function refreshDevices() {
+  const result = await call('wlan-connection.discover');
+  if (!result.ok) { toast(result.error, 'err'); return; }
+  state.devices = (result.value?.devices ?? []).map(d => ({ ...d }));
+  const live = new Set(state.devices.map(d => d.serial));
+  for (const key of [...state.screenshots.keys()]) if (!live.has(key)) state.screenshots.delete(key);
+  renderCenter();
+}
+
+async function takeScreenshot(serial) {
+  const r = await call('wlan-connection.screencap', { serial });
+  if (!r.ok) { toast('截图失败：' + r.error, 'err'); return; }
+  const url = `/files/${encodeURI(r.value.path)}?ts=${Date.now()}`;
+  state.screenshots.set(serial, { url, ts: r.value.takenAt });
+  renderCenter();
+}
+
+function startScreenshotPolling() {
+  if (state.refreshTimer) return;
+  const tick = async () => {
+    for (const d of state.devices) {
+      if (d.state !== 'device') continue;
+      const r = await call('wlan-connection.screencap', { serial: d.serial });
+      if (r.ok) state.screenshots.set(d.serial, { url: `/files/${encodeURI(r.value.path)}?ts=${Date.now()}`, ts: r.value.takenAt });
+    }
+    if (state.view === 'dashboard') renderCenter();
+  };
+  state.refreshTimer = setInterval(tick, 2500);
+}
+
+/* ====================================================================== */
+/* Module open/close                                                        */
+/* ====================================================================== */
+
+function openModule(id, focusSerial) {
+  state.view = id;
+  state.focusSerial = focusSerial;
+  renderStrip();
+  renderCenter();
+  renderPanel();
+}
+function closeModule() {
+  state.view = 'dashboard';
+  state.focusSerial = null;
+  renderStrip();
+  renderCenter();
+  renderPanel();
+  document.getElementById('crumbs').textContent = '设备';
+}
+
+/* ====================================================================== */
+/* Common helpers                                                           */
+/* ====================================================================== */
+function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
+function renderField(field, key) {
+  const id = `f-${key}-${field.name}`;
+  const placeholder = field.placeholder ? ` placeholder="${escapeHtml(field.placeholder)}"` : '';
+  const required = field.required ? ' required' : '';
+  const type = field.type ?? 'text';
+  let input = '';
+  if (type === 'textarea') {
+    input = `<textarea id="${id}" name="${escapeHtml(field.name)}"${placeholder}${required}>${escapeHtml(field.value ?? '')}</textarea>`;
+  } else if (type === 'select') {
+    input = `<select id="${id}" name="${escapeHtml(field.name)}">${(field.options ?? []).map(opt => `<option value="${escapeHtml(opt)}" ${String(opt) === String(field.value ?? '') ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')}</select>`;
+  } else if (type === 'checkbox') {
+    input = `<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="${id}" name="${escapeHtml(field.name)}" ${field.value === true ? 'checked' : ''}> 启用</label>`;
+  } else if (type === 'number') {
+    input = `<input type="number" id="${id}" name="${escapeHtml(field.name)}" value="${escapeHtml(field.value ?? '')}"${placeholder}${required}>`;
+  } else {
+    input = `<input type="text" id="${id}" name="${escapeHtml(field.name)}" value="${escapeHtml(field.value ?? '')}"${placeholder}${required}>`;
+  }
+  const req = field.required ? ' <span style="color:var(--err)">*</span>' : '';
+  return `<div class="field ${field.grow ? 'grow' : ''}">
+    <label for="${id}">${escapeHtml(field.label ?? field.name)}${req}</label>${input}
+    ${field.hint && !field.label ? `<div style="color:var(--ink-3);font-size:11.5px">${escapeHtml(field.hint)}</div>` : ''}
+  </div>`;
+}
+
+function readForm(form) {
+  const data = {};
+  for (const el of form.querySelectorAll('input,select,textarea')) {
+    if (!el.name) continue;
+    if (el.type === 'checkbox') data[el.name] = el.checked;
+    else if (el.type === 'number') data[el.name] = el.value === '' ? undefined : Number(el.value);
+    else data[el.name] = el.value;
+  }
+  return data;
+}
+
+function refresh() {
+  renderCenter();
+  if (state.view !== 'dashboard') renderPanel();
+}
+
+/* ====================================================================== */
+/* Module: wlan-connection  (设备) — device management                     */
+/*   Features: 备注设备名 / 设备分组 / 绑定任务标识 / 删除设备 /            */
+/*             多种添加方式 + 自动检测                                     */
+/* ====================================================================== */
+
+const modules = {};
+
+modules['wlan-connection'] = {
+  render(s) {
+    return `
+      <div class="tabs">
+        <button data-tab="list" class="on">已管理设备</button>
+        <button data-tab="add">添加设备</button>
+        <button data-tab="pair">配对二维码</button>
+        <button data-tab="conn">连接状态</button>
+      </div>
+      <div id="wlan-tab"></div>
+    `;
+  },
+  bind(s) {
+    const renderTab = (name) => {
+      document.querySelectorAll('#panel [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+      document.getElementById('wlan-tab').innerHTML = name === 'list' ? wlanListTab(s)
+        : name === 'add' ? wlanAddTab(s)
+        : name === 'pair' ? wlanPairTab(s)
+        : wlanConnTab(s);
+      bindWlanTab(name, s);
+    };
+    document.querySelectorAll('#panel [data-tab]').forEach(b => b.addEventListener('click', () => renderTab(b.dataset.tab)));
+    renderTab('list');
+  },
+};
+
+function wlanListTab(s) {
+  return `<div class="card">
+    <h3>已管理设备 <span style="color:var(--ink-3);font-weight:400">· 共 ${s.devices.length} 台</span></h3>
+    <div class="sub">点击编辑备注、调整分组、绑定任务标识。设备池模块会按分组调度任务。</div>
+    <div class="dev-list" id="dev-list"></div>
+  </div>`;
+}
+
+function bindWlanTab(name, s) {
+  if (name === 'list') bindDevList(s);
+  else if (name === 'add') bindAddTab(s);
+  else if (name === 'pair') bindPairTab(s);
+  else bindConnTab(s);
+}
+
+function bindDevList(s) {
+  const list = document.getElementById('dev-list');
+  if (s.devices.length === 0) {
+    list.innerHTML = `<div class="empty"><div class="big">还没有管理任何设备</div><div>在「添加设备」里手动加入，或使用「自动检测」一键导入。</div></div>`;
+    return;
+  }
+  call('device-pool.listGroups').then(r => {
+    const groupNames = (r.ok ? (r.value?.groups ?? []).map(g => g.name) : []);
+    list.innerHTML = s.devices.map(d => devRow(d, groupNames)).join('');
+    list.querySelectorAll('[data-dev-act]').forEach(btn => {
+      btn.addEventListener('click', () => handleDevAction(btn.dataset.devAct, btn.dataset.serial));
+    });
+    list.querySelectorAll('form[data-dev-edit]').forEach(form => {
+      form.addEventListener('submit', e => { e.preventDefault(); saveDeviceEdit(form, s); });
+    });
+  });
+}
+
+function devRow(d, groupNames) {
+  const groups = (d.groups ?? []).map(g => `<span class="tag">${escapeHtml(g)}</span>`).join('');
+  const meta = [];
+  if (d.taskId) meta.push(`任务：<b>${escapeHtml(d.taskId)}</b>`);
+  if (d.notes) meta.push(`备注：${escapeHtml(d.notes)}`);
+  if (d.model) meta.push(`型号：${escapeHtml(d.model)}`);
+  return `<div class="dev-row" data-serial="${escapeHtml(d.serial)}">
+    <div>
+      <div class="title">
+        <span>${d.state === 'device' ? '🟢' : '⚪'}</span>
+        <span>${escapeHtml(d.name ?? d.serial)}</span>
+        <span class="mono" style="color:var(--ink-3);font-size:12px;font-weight:400">${escapeHtml(d.serial)}</span>
+        <span class="tag muted" style="background:var(--surface-2);color:var(--ink-2)">${d.transport === 'usb' ? 'USB' : 'WiFi'}</span>
+        ${d.known ? '' : '<span class="tag warn">新设备</span>'}
+      </div>
+      <div class="meta">${meta.join(' · ') || '未设置备注 / 任务 / 分组'}</div>
+      <div class="pills">${groups || '<span class="tag muted" style="background:transparent;color:var(--ink-3)">未分组</span>'}</div>
+      <form data-dev-edit="${escapeHtml(d.serial)}" style="margin-top:10px;display:grid;grid-template-columns:1fr 2fr 1fr auto;gap:6px;align-items:end">
+        <div><label>设备名</label><input name="name" value="${escapeHtml(d.name ?? '')}" placeholder="如 测试机-Pixel7"></div>
+        <div><label>设备分组（逗号分隔）</label><input name="groups" value="${escapeHtml((d.groups ?? []).join(', '))}" placeholder="如 qa, pixel, 主力" list="known-groups"></div>
+        <div><label>绑定任务标识</label><input name="taskId" value="${escapeHtml(d.taskId ?? '')}" placeholder="如 smoke-android"></div>
+        <div style="display:flex;gap:6px">
+          <button class="primary" type="submit">保存</button>
+          <button class="danger" data-dev-act="delete" data-serial="${escapeHtml(d.serial)}" type="button">删除</button>
+        </div>
+        <datalist id="known-groups">${groupNames.map(g => `<option value="${escapeHtml(g)}">`).join('')}</datalist>
+        <div style="grid-column:1 / -1"><label>备注</label><input name="notes" value="${escapeHtml(d.notes ?? '')}" placeholder="如 8 月新到货，分配给 QA-A 同学"></div>
+      </form>
+    </div>
+  </div>`;
+}
+
+async function saveDeviceEdit(form, s) {
+  const serial = form.dataset.devEdit;
+  const device = s.devices.find(x => x.serial === serial);
+  if (!device) return toast('找不到这台设备', 'err');
+  const data = readForm(form);
+  const groups = (data.groups ?? '').split(/[,，;；\s]+/).map(t => t.trim()).filter(Boolean);
+  const r = await call('wlan-connection.saveDevice', {
+    id: device.id, transport: device.transport,
+    name: data.name || device.name,
+    groups, taskId: data.taskId || undefined, notes: data.notes || undefined,
+    ...(device.transport === 'usb' ? { serial } : { wifi: device.wifi, host: device.wifi?.host, port: device.wifi?.port }),
+  });
+  if (!r.ok) return toast('保存失败：' + r.error, 'err');
+  toast('已保存', 'ok');
+  await refreshDevices();
+  modules['wlan-connection'].bind(s);
+}
+
+async function handleDevAction(act, serial) {
+  if (act === 'delete') {
+    if (!confirm(`确定删除设备 ${serial}？`)) return;
+    const r = await call('wlan-connection.removeDevice', { id: (state.devices.find(d => d.serial === serial) ?? {}).id });
+    if (!r.ok) return toast('删除失败：' + r.error, 'err');
+    toast('已删除', 'ok');
+    await refreshDevices();
+    modules['wlan-connection'].bind(state);
+  }
+}
+
+function wlanAddTab(s) {
+  return `<div class="card">
+    <h3>添加设备</h3>
+    <div class="sub">选一种最适合当前场景的方式，添加后会出现在「已管理设备」里。</div>
+    <div class="tabs">
+      <button data-add="auto" class="on">🔍 自动检测</button>
+      <button data-add="usb">🔌 手动 USB</button>
+      <button data-add="wifi">📡 手动 WiFi</button>
+      <button data-add="qr">📷 扫二维码</button>
+    </div>
+    <div id="add-pane"></div>
+  </div>`;
+}
+
+function bindAddTab(s) {
+  const renderPane = (kind) => {
+    document.querySelectorAll('#panel [data-add]').forEach(b => b.classList.toggle('on', b.dataset.add === kind));
+    const pane = document.getElementById('add-pane');
+    if (kind === 'auto') pane.innerHTML = addAutoPane();
+    else if (kind === 'usb') pane.innerHTML = addUsbPane();
+    else if (kind === 'wifi') pane.innerHTML = addWifiPane();
+    else pane.innerHTML = addQrPane();
+    pane.querySelectorAll('form,button[data-add-act]').forEach(el => {
+      el.addEventListener('submit', e => { e.preventDefault(); });
+      el.addEventListener('click', e => {
+        const btn = e.target.closest('[data-add-act]');
+        if (btn) handleAddAction(btn.dataset.addAct, pane);
+      });
+    });
+  };
+  document.querySelectorAll('#panel [data-add]').forEach(b => b.addEventListener('click', () => renderPane(b.dataset.add)));
+  renderPane('auto');
+}
+
+function addAutoPane() {
+  return `<div class="sub">点击「开始检测」会扫描 adb 报告的所有设备，自动保存尚未入库的新设备。</div>
+    <div style="display:flex;gap:10px;margin:10px 0"><button class="primary" data-add-act="auto">开始检测</button></div>
+    <div id="auto-result"></div>`;
+}
+
+async function handleAddAction(act, pane) {
+  if (act === 'auto') {
+    const r = await call('wlan-connection.discover');
+    const out = document.getElementById('auto-result');
+    if (!r.ok) { out.innerHTML = `<div class="empty">检测失败：${escapeHtml(r.error)}</div>`; return; }
+    const newOnes = r.value.devices.filter(d => !d.known);
+    if (newOnes.length === 0) {
+      out.innerHTML = `<div class="empty"><div class="big">没有新设备</div><div>所有 adb 报告的设备都已经在管理列表里。</div></div>`;
+      return;
+    }
+    out.innerHTML = `<div class="card" style="margin:0;box-shadow:none;border:1px dashed var(--line-2)">
+      <h3>发现 ${newOnes.length} 台新设备</h3>
+      ${newOnes.map(d => `<div class="dev-row" style="grid-template-columns:1fr auto">
+        <div><div class="title">${escapeHtml(d.name ?? d.serial)}</div><div class="meta">${escapeHtml(d.serial)} · ${escapeHtml(d.model ?? '')}</div></div>
+        <div class="actions"><button class="primary" data-import="${escapeHtml(d.serial)}">导入</button></div>
+      </div>`).join('')}
+    </div>`;
+    out.querySelectorAll('[data-import]').forEach(btn => {
+      btn.addEventListener('click', () => addDeviceFromDiscover(btn.dataset.import, btn.closest('.dev-row').querySelector('.title').textContent));
+    });
+  }
+}
+
+async function addDeviceFromDiscover(serial, defaultName) {
+  const r = await call('wlan-connection.discover');
+  if (!r.ok) return toast('导入失败：' + r.error, 'err');
+  const d = (r.value.devices ?? []).find(x => x.serial === serial);
+  if (!d) return toast('设备已离线', 'err');
+  const save = await call('wlan-connection.saveDevice', {
+    transport: d.transport, serial: d.serial, name: defaultName ?? d.serial,
+    model: d.model,
+  });
+  if (!save.ok) return toast('导入失败：' + save.error, 'err');
+  toast('已加入管理', 'ok');
+  await refreshDevices();
+}
+
+function addUsbPane() {
+  return `<form id="add-usb" class="row">
+    <div class="field grow"><label>设备名</label><input name="name" placeholder="如 主力-小米14"></div>
+    <div class="field grow"><label>USB 序列号</label><input name="serial" required placeholder="adb devices 列出的那一串"></div>
+    <div class="field"><label>型号（可选）</label><input name="model" placeholder="Mi 14"></div>
+    <div class="field"><label>设备分组</label><input name="groups" placeholder="qa, 主测"></div>
+    <div class="field"><label>任务标识</label><input name="taskId" placeholder="smoke"></div>
+    <div class="field grow"><label>备注</label><input name="notes" placeholder="如 8 月到货"></div>
+    <div><label>&nbsp;</label><button class="primary" type="submit">保存</button></div>
+  </form>`;
+}
+function addWifiPane() {
+  return `<form id="add-wifi" class="row">
+    <div class="field grow"><label>设备名</label><input name="name" placeholder="如 WiFi-Pixel6"></div>
+    <div class="field grow"><label>WiFi 地址</label><input name="host" required placeholder="192.168.1.20"></div>
+    <div class="field"><label>连接端口</label><input type="number" name="port" value="5555"></div>
+    <div class="field"><label>配对端口（可选）</label><input type="number" name="pairingPort" placeholder="如 37123"></div>
+    <div class="field"><label>设备分组</label><input name="groups" placeholder="qa, 主测"></div>
+    <div class="field"><label>任务标识</label><input name="taskId" placeholder="smoke"></div>
+    <div class="field grow"><label>备注</label><input name="notes" placeholder="如 2 楼工位"></div>
+    <div><label>&nbsp;</label><button class="primary" type="submit">保存</button></div>
+  </form>`;
+}
+function addQrPane() {
+  return `<div class="sub">两种用法：① 让手机扫下面这张二维码完成配对（推荐，零输入）；② 把手机已有的配对二维码内容贴到下面文本框里解析。</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px">
+      <div class="card" style="margin:0">
+        <h3>① 反向配对</h3>
+        <div class="sub">电脑生成二维码，手机在「开发者选项 → 无线调试」里扫码即可完成配对，配对成功后会自动保存设备。</div>
+        <button class="primary" data-act="gen">生成二维码</button>
+        <div id="qr-out" style="margin-top:10px"></div>
+      </div>
+      <div class="card" style="margin:0">
+        <h3>② 解析已有二维码</h3>
+        <form id="add-qr">
+          <label>二维码内容</label>
+          <textarea name="qr" required placeholder="WIFI:T:ADB;S:service-name;P:123456;;"></textarea>
+          <div class="row" style="margin-top:10px"><div class="field grow"><label>设备名</label><input name="name" placeholder="自动取 service 名"></div>
+          <div><label>&nbsp;</label><button class="primary" type="submit">解析并保存</button></div></div>
+        </form>
+      </div>
+    </div>`;
+}
+
+function wlanPairTab(s) {
+  return `<div class="card">
+    <h3>配对二维码</h3>
+    <div class="sub">用电脑生成配对二维码，手机在「开发者选项 → 无线调试」里扫码。</div>
+    <div class="row">
+      <div class="field"><label>服务名（留空随机）</label><input id="qr-name" placeholder="如 opengui"></div>
+      <div class="field"><label>配对码（留空随机）</label><input id="qr-code" placeholder="6 位数字"></div>
+      <div><label>&nbsp;</label><button class="primary" id="qr-go">生成</button></div>
+    </div>
+    <div id="qr-box" style="margin-top:14px"></div>
+  </div>`;
+}
+
+function bindPairTab(s) {
+  document.getElementById('qr-go').addEventListener('click', async () => {
+    const serviceName = document.getElementById('qr-name').value || undefined;
+    const code = document.getElementById('qr-code').value || undefined;
+    const r = await call('wlan-connection.generatePairingQr', { serviceName, code, scale: 6 });
+    if (!r.ok) return toast('生成失败：' + r.error, 'err');
+    const v = r.value;
+    document.getElementById('qr-box').innerHTML = `<div class="qrbox">
+      <img src="${v.dataUrl}" alt="配对二维码">
+      <div class="info">
+        <div class="h">${escapeHtml(v.serviceName ?? '')}</div>
+        <div>配对码：<b>${escapeHtml(v.pairingCode ?? '')}</b></div>
+        <div style="color:var(--ink-3);font-size:11.5px;margin-top:4px">二维码文本：<br><code>${escapeHtml(v.qrText)}</code></div>
+      </div>
+    </div>`;
+  });
+}
+
+function wlanConnTab(s) {
+  return `<div class="card">
+    <h3>连接状态</h3>
+    <div class="sub">查看当前连接模式、最近一次连接结果、错误信息。</div>
+    <div class="row">
+      <button class="primary" data-conn="auto">自动模式</button>
+      <button class="ghost" data-conn="usb">USB</button>
+      <button class="ghost" data-conn="wifi">WiFi</button>
+      <button class="ghost" data-conn="disconnect">断开</button>
+    </div>
+    <div id="conn-out" style="margin-top:14px"></div>
+  </div>`;
+}
+
+function bindConnTab(s) {
+  document.querySelectorAll('#panel [data-conn]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const a = btn.dataset.conn;
+      const target = a === 'disconnect' ? 'wlan-connection.disconnect' : (a === 'wifi' ? 'wlan-connection.connect' : 'wlan-connection.connect');
+      const r = await call(target, a === 'connect' || a === 'auto' ? { mode: a === 'wifi' ? 'wifi' : 'auto' } : {});
+      const out = document.getElementById('conn-out');
+      if (!r.ok) { out.innerHTML = `<div class="empty" style="border-color:#fecaca;color:var(--err)">${escapeHtml(r.error)}</div>`; return; }
+      out.innerHTML = `<pre class="mono" style="background:var(--surface-2);padding:12px;border-radius:8px;white-space:pre-wrap">${escapeHtml(JSON.stringify(r.value, null, 2))}</pre>`;
+      await refreshDevices();
+    });
+  });
+}
+
+/* ====================================================================== */
+/* Simple modules (snippet, action-template, scheduler, project-group,      */
+/* demo-recorder, workflow-marketplace, feedback-rl, device-pool, replay)  */
+/*   They reuse the same backend via the `call()` helper, but the surface  */
+/*   is friendly (no method names, no raw JSON in the default state).      */
+/* ====================================================================== */
+
+modules['snippet-library'] = {
+  render(s) {
+    return `<div class="card">
+      <h3>指令库</h3>
+      <div class="sub">把常用的 adb 命令收藏起来，调用时按别名展开。</div>
+      <form id="form-snippet" class="row" style="margin-bottom:14px">
+        ${renderField({ name: 'alias', label: '别名', required: true, placeholder: 'sc' }, 'snippet')}
+        ${renderField({ name: 'command', label: '完整指令', required: true, placeholder: 'shell screencap -p /sdcard/sc.png && pull /sdcard/sc.png .' }, 'snippet')}
+        ${renderField({ name: 'tags', label: '标签（逗号分隔）' }, 'snippet')}
+        ${renderField({ name: 'description', label: '说明' }, 'snippet')}
+        <div><label>&nbsp;</label><button class="primary" type="submit">保存</button></div>
+      </form>
+      <div id="list-snippet"></div>
+    </div>`;
+  },
+  bind(s) {
+    document.getElementById('form-snippet').addEventListener('submit', async e => {
+      e.preventDefault();
+      const data = readForm(e.target);
+      const r = await call('snippet-library.save', data);
+      if (!r.ok) return toast('保存失败：' + r.error, 'err');
+      toast('已保存', 'ok');
+      renderList();
+    });
+    const renderList = async () => {
+      const r = await call('snippet-library.list');
+      const box = document.getElementById('list-snippet');
+      if (!r.ok) { box.innerHTML = `<div class="empty">加载失败：${escapeHtml(r.error)}</div>`; return; }
+      const rows = r.value?.snippets ?? [];
+      if (rows.length === 0) { box.innerHTML = `<div class="empty">还没有任何指令</div>`; return; }
+      box.innerHTML = `<table class="table"><thead><tr><th>别名</th><th>指令</th><th>说明</th><th></th></tr></thead>
+        <tbody>${rows.map(row => `<tr>
+          <td><b>${escapeHtml(row.alias)}</b></td>
+          <td><code>${escapeHtml(row.command)}</code></td>
+          <td>${escapeHtml(row.description ?? '')}</td>
+          <td><button class="danger" data-del="${escapeHtml(row.id ?? row.alias)}">删除</button></td>
+        </tr>`).join('')}</tbody></table>`;
+      box.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+        if (!confirm('确定删除？')) return;
+        await call('snippet-library.remove', { id: btn.dataset.del });
+        renderList();
+      }));
+    };
+    renderList();
+  },
+};
+
+modules['action-template'] = {
+  render(s) {
+    return `<div class="card">
+      <h3>动作模板</h3>
+      <div class="sub">录制一串操作，一键回放；参数里可写 <code>{{变量名}}</code> 占位。</div>
+      <div class="row">
+        <div class="field grow"><label>模板名</label><input id="tpl-name" placeholder="如 登录流程"></div>
+        <div><label>&nbsp;</label><button class="primary" id="tpl-start">开始录制</button></div>
+      </div>
+      <div id="tpl-rec" style="margin-top:12px"></div>
+      <div id="tpl-list" style="margin-top:14px"></div>
+    </div>`;
+  },
+  bind(s) {
+    document.getElementById('tpl-start').addEventListener('click', async () => {
+      const name = document.getElementById('tpl-name').value;
+      if (!name) return toast('请输入模板名', 'err');
+      const r = await call('action-template.startRecording', { name });
+      if (!r.ok) return toast('开始录制失败：' + r.error, 'err');
+      state.tplRecording = r.value.recordingId;
+      toast('已创建录制会话', 'ok');
+      document.getElementById('tpl-rec').innerHTML = `<div class="sub">录制中：<code>${escapeHtml(r.value.recordingId)}</code></div>
+        <div class="row" style="margin-top:8px"><button class="ghost" id="tpl-stop">结束录制</button></div>`;
+      document.getElementById('tpl-stop').addEventListener('click', async () => {
+        await call('action-template.stopRecording', { recordingId: state.tplRecording });
+        toast('已结束', 'ok');
+        state.tplRecording = null;
+        renderList();
+      });
+    });
+    const renderList = async () => {
+      const r = await call('action-template.list');
+      const box = document.getElementById('tpl-list');
+      if (!r.ok) { box.innerHTML = `<div class="empty">加载失败：${escapeHtml(r.error)}</div>`; return; }
+      const rows = r.value?.templates ?? [];
+      if (rows.length === 0) { box.innerHTML = `<div class="empty">还没有任何模板</div>`; return; }
+      box.innerHTML = `<table class="table"><thead><tr><th>名称</th><th>变量</th><th>步骤数</th><th></th></tr></thead>
+        <tbody>${rows.map(t => `<tr>
+          <td>${escapeHtml(t.name)}<div style="color:var(--ink-3);font-size:11.5px">${escapeHtml(t.id)}</div></td>
+          <td>${(t.variables ?? []).map(v => `<span class="tag">${escapeHtml(v.name ?? v)}</span>`).join('') || '<span style="color:var(--ink-3)">无</span>'}</td>
+          <td>${(t.steps ?? []).length}</td>
+          <td><button class="danger" data-del="${escapeHtml(t.id)}">删除</button></td>
+        </tr>`).join('')}</tbody></table>`;
+      box.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+        if (!confirm('确定删除？')) return;
+        await call('action-template.remove', { id: btn.dataset.del });
+        renderList();
+      }));
+    };
+    renderList();
+  },
+};
+
+modules['scheduler'] = {
+  render(s) {
+    return `<div class="card">
+      <h3>定时任务</h3>
+      <div class="sub">到点自动执行指令或模板。</div>
+      <form id="form-scheduler" class="row">
+        <div class="field"><label>任务名</label><input name="name" required></div>
+        <div class="field"><label>类型</label><select name="kind"><option value="once">一次性</option><option value="interval">间隔</option><option value="cron">Cron</option></select></div>
+        <div class="field grow"><label>时间表达式（ISO 时间 / 毫秒间隔 / Cron）</label><input name="at" placeholder="2099-01-01T00:00:00+08:00 或 30000 或 */5 * * * *"></div>
+        <div class="field"><label>目标</label><select name="targetType"><option value="snippet">指令</option><option value="template">模板</option></select></div>
+        <div class="field"><label>目标 ID / 别名</label><input name="target" required placeholder="指令别名 或 模板 id"></div>
+        <div class="field"><label>变量（仅模板，JSON）</label><input name="variables" placeholder='{"pkg":"com.android.settings"}'></div>
+        <div><label>&nbsp;</label><button class="primary" type="submit">创建</button></div>
+      </form>
+      <div id="list-scheduler" style="margin-top:14px"></div>
+    </div>`;
+  },
+  bind(s) {
+    document.getElementById('form-scheduler').addEventListener('submit', async e => {
+      e.preventDefault();
+      const data = readForm(e.target);
+      const targetType = data.targetType;
+      const targetStr = data.target;
+      delete data.targetType; delete data.target;
+      let target;
+      if (targetType === 'snippet') target = { type: 'snippet', alias: targetStr };
+      else target = { type: 'template', templateId: targetStr, ...(data.variables ? { variables: safeJson(data.variables) } : {}) };
+      const schedule = data.kind === 'interval' ? { kind: 'interval', ms: Number(data.at) } : data.kind === 'cron' ? { kind: 'cron', expression: data.at } : { kind: 'once', at: data.at };
+      const r = await call('scheduler.create', { name: data.name, schedule, target });
+      if (!r.ok) return toast('创建失败：' + r.error, 'err');
+      toast('已创建', 'ok');
+      renderList();
+    });
+    const renderList = async () => {
+      const r = await call('scheduler.list');
+      const box = document.getElementById('list-scheduler');
+      if (!r.ok) { box.innerHTML = `<div class="empty">${escapeHtml(r.error)}</div>`; return; }
+      const rows = r.value?.tasks ?? [];
+      if (rows.length === 0) { box.innerHTML = `<div class="empty">还没有任何定时任务</div>`; return; }
+      box.innerHTML = `<table class="table"><thead><tr><th>名称</th><th>类型</th><th>下次执行</th><th>目标</th><th></th></tr></thead>
+        <tbody>${rows.map(t => `<tr>
+          <td>${escapeHtml(t.name)}</td>
+          <td>${escapeHtml(t.schedule?.kind ?? '')}</td>
+          <td><span class="mono">${escapeHtml(t.nextRunAt ?? '—')}</span></td>
+          <td><span class="tag">${escapeHtml(t.target?.type ?? '')}</span> ${escapeHtml(t.target?.alias ?? t.target?.templateId ?? '')}</td>
+          <td style="display:flex;gap:6px">
+            <button class="ghost" data-run="${escapeHtml(t.id)}">立即执行</button>
+            <button class="danger" data-del="${escapeHtml(t.id)}">删除</button>
+          </td>
+        </tr>`).join('')}</tbody></table>`;
+      box.querySelectorAll('[data-run]').forEach(btn => btn.addEventListener('click', async () => {
+        const r = await call('scheduler.runNow', { id: btn.dataset.run });
+        if (!r.ok) return toast('执行失败：' + r.error, 'err');
+        toast('已执行', 'ok');
+      }));
+      box.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+        if (!confirm('删除？')) return;
+        await call('scheduler.remove', { id: btn.dataset.del });
+        renderList();
+      }));
+    };
+    renderList();
+  },
+};
+
+modules['project-group'] = {
+  render(s) {
+    return `<div class="card">
+      <h3>项目组</h3>
+      <div class="sub">按项目隔离数据，切换项目组会自动重置各模块。</div>
+      <form id="form-pg" class="row">
+        <div class="field grow"><label>项目名</label><input name="name" required></div>
+        <div class="field"><label>标签（逗号分隔）</label><input name="tags"></div>
+        <div class="field"><label>关联设备 ID（逗号分隔）</label><input name="deviceIds"></div>
+        <div class="field grow"><label>说明</label><input name="description"></div>
+        <div><label>&nbsp;</label><button class="primary" type="submit">创建</button></div>
+      </form>
+      <div id="list-pg" style="margin-top:14px"></div>
+    </div>`;
+  },
+  bind(s) {
+    document.getElementById('form-pg').addEventListener('submit', async e => {
+      e.preventDefault();
+      const data = readForm(e.target);
+      const r = await call('project-group.create', {
+        name: data.name,
+        description: data.description || undefined,
+        tags: csvList(data.tags),
+        deviceIds: csvList(data.deviceIds),
+      });
+      if (!r.ok) return toast('创建失败：' + r.error, 'err');
+      toast('已创建', 'ok');
+      renderList();
+    });
+    const renderList = async () => {
+      const r = await call('project-group.list');
+      const box = document.getElementById('list-pg');
+      if (!r.ok) { box.innerHTML = `<div class="empty">${escapeHtml(r.error)}</div>`; return; }
+      const rows = r.value?.groups ?? [];
+      const current = (await call('project-group.current')).value?.current?.id;
+      if (rows.length === 0) { box.innerHTML = `<div class="empty">还没有任何项目组</div>`; return; }
+      box.innerHTML = `<table class="table"><thead><tr><th>名称</th><th>标签</th><th>设备</th><th>当前</th><th></th></tr></thead>
+        <tbody>${rows.map(g => `<tr>
+          <td>${escapeHtml(g.name)}<div class="mono" style="color:var(--ink-3);font-size:11.5px">${escapeHtml(g.id)}</div></td>
+          <td>${(g.tags ?? []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</td>
+          <td>${(g.deviceIds ?? []).map(t => `<span class="tag muted">${escapeHtml(t)}</span>`).join('') || '<span style="color:var(--ink-3)">无</span>'}</td>
+          <td>${g.id === current ? '<span class="ok">● 当前</span>' : ''}</td>
+          <td style="display:flex;gap:6px">
+            <button class="ghost" data-switch="${escapeHtml(g.id)}">切换</button>
+            <button class="danger" data-del="${escapeHtml(g.id)}">删除</button>
+          </td>
+        </tr>`).join('')}</tbody></table>`;
+      box.querySelectorAll('[data-switch]').forEach(btn => btn.addEventListener('click', async () => {
+        const r = await call('project-group.switch', { id: btn.dataset.switch });
+        if (!r.ok) return toast('切换失败：' + r.error, 'err');
+        toast('已切换', 'ok');
+        state.currentProject = btn.dataset.switch;
+        renderProjectSelect();
+        renderList();
+      }));
+      box.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+        if (!confirm('删除？')) return;
+        await call('project-group.remove', { id: btn.dataset.del });
+        renderList();
+      }));
+    };
+    renderList();
+  },
+};
+
+modules['demo-recorder'] = {
+  render(s) { return `<div class="card"><h3>演示录制</h3><div class="sub">录一段带截图的演示给 AI 看，便于教学和复现。</div><div id="dr-list">加载中…</div></div>`; },
+  bind(s) {
+    const r = async () => {
+      const r = await call('demo-recorder.listDemos');
+      const box = document.getElementById('dr-list');
+      if (!r.ok) { box.innerHTML = `<div class="empty">${escapeHtml(r.error)}</div>`; return; }
+      const rows = r.value?.recordings ?? [];
+      if (rows.length === 0) { box.innerHTML = `<div class="empty">还没有任何演示</div>`; return; }
+      box.innerHTML = `<table class="table"><thead><tr><th>名称</th><th>状态</th><th>步骤数</th><th></th></tr></thead>
+        <tbody>${rows.map(d => `<tr>
+          <td>${escapeHtml(d.name)}<div class="mono" style="color:var(--ink-3);font-size:11.5px">${escapeHtml(d.id)}</div></td>
+          <td>${escapeHtml(d.status ?? '')}</td>
+          <td>${(d.steps ?? []).length}</td>
+          <td style="display:flex;gap:6px">
+            <button class="ghost" data-to="${escapeHtml(d.id)}">转模板</button>
+            <button class="danger" data-del="${escapeHtml(d.id)}">删除</button>
+          </td>
+        </tr>`).join('')}</tbody></table>`;
+      box.querySelectorAll('[data-to]').forEach(btn => btn.addEventListener('click', async () => {
+        const r = await call('demo-recorder.toTemplate', { id: btn.dataset.to });
+        if (!r.ok) return toast('转换失败：' + r.error, 'err');
+        toast('已生成模板', 'ok');
+      }));
+      box.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+        if (!confirm('删除？')) return;
+        await call('demo-recorder.removeDemo', { id: btn.dataset.del });
+        r();
+      }));
+    };
+    r();
+  },
+};
+
+modules['workflow-marketplace'] = {
+  render(s) { return `<div class="card"><h3>工作流市场</h3><div class="sub">下载社区模板，发布自己的模板。</div><div id="wm-list">加载中…</div></div>`; },
+  bind(s) {
+    const r = async () => {
+      const r = await call('workflow-marketplace.browse');
+      const box = document.getElementById('wm-list');
+      if (!r.ok) { box.innerHTML = `<div class="empty">${escapeHtml(r.error)}</div>`; return; }
+      const rows = r.value?.items ?? r.value?.workflows ?? [];
+      if (rows.length === 0) { box.innerHTML = `<div class="empty">市场里还没有模板</div>`; return; }
+      box.innerHTML = `<table class="table"><thead><tr><th>名称</th><th>分类</th><th>下载</th><th>评分</th><th></th></tr></thead>
+        <tbody>${rows.map(w => `<tr>
+          <td>${escapeHtml(w.name ?? w.title ?? w.id)}<div class="mono" style="color:var(--ink-3);font-size:11.5px">${escapeHtml(w.id)}</div></td>
+          <td>${escapeHtml(w.category ?? '—')}</td>
+          <td>${escapeHtml(String(w.downloads ?? 0))}</td>
+          <td>${escapeHtml(String(w.rating ?? '—'))}</td>
+          <td><button class="primary" data-install="${escapeHtml(w.id)}">安装</button></td>
+        </tr>`).join('')}</tbody></table>`;
+      box.querySelectorAll('[data-install]').forEach(btn => btn.addEventListener('click', async () => {
+        const r = await call('workflow-marketplace.install', { id: btn.dataset.install });
+        if (!r.ok) return toast('安装失败：' + r.error, 'err');
+        toast('已安装', 'ok');
+      }));
+    };
+    r();
+  },
+};
+
+modules['feedback-rl'] = {
+  render(s) { return `<div class="card">
+    <h3>人类反馈强化学习</h3>
+    <div class="sub">告诉 AI 哪些流程是成功的、哪些失败以及怎么修，下次遇到类似情况它会自动想起。</div>
+    <form id="form-frl" class="row">
+      <div class="field"><label>任务标识</label><input name="taskLabel" required></div>
+      <div class="field"><label>结果</label><select name="outcome"><option value="success">成功</option><option value="partial">部分成功</option><option value="failure">失败</option></select></div>
+      <div class="field grow"><label>现象</label><input name="symptom" placeholder="如 点击登录按钮无响应"></div>
+      <div class="field grow"><label>解决办法</label><input name="resolution" placeholder="如 重启 adb 服务"></div>
+      <div class="field grow"><label>备注</label><input name="comment"></div>
+      <div><label>&nbsp;</label><button class="primary" type="submit">记录</button></div>
+    </form>
+    <div id="frl-list" style="margin-top:14px"></div>
+  </div>`; },
+  bind(s) {
+    document.getElementById('form-frl').addEventListener('submit', async e => {
+      e.preventDefault();
+      const data = readForm(e.target);
+      const r = await call('feedback-rl.record', data);
+      if (!r.ok) return toast('记录失败：' + r.error, 'err');
+      toast('已记录', 'ok');
+      renderList();
+    });
+    const renderList = async () => {
+      const r = await call('feedback-rl.listRecords', { limit: 30 });
+      const box = document.getElementById('frl-list');
+      if (!r.ok) { box.innerHTML = `<div class="empty">${escapeHtml(r.error)}</div>`; return; }
+      const rows = r.value?.items ?? r.value?.records ?? [];
+      if (rows.length === 0) { box.innerHTML = `<div class="empty">还没有任何反馈记录</div>`; return; }
+      box.innerHTML = `<table class="table"><thead><tr><th>任务</th><th>结果</th><th>现象</th><th>解决办法</th></tr></thead>
+        <tbody>${rows.map(rec => `<tr>
+          <td>${escapeHtml(rec.taskLabel)}</td>
+          <td>${rec.outcome === 'success' ? '<span class="ok">成功</span>' : rec.outcome === 'failure' ? '<span class="err">失败</span>' : escapeHtml(rec.outcome ?? '')}</td>
+          <td>${escapeHtml(rec.symptom ?? '')}</td>
+          <td>${escapeHtml(rec.resolution ?? '')}</td>
+        </tr>`).join('')}</tbody></table>`;
+    };
+    renderList();
+  },
+};
+
+modules['device-pool'] = {
+  render(s) { return `<div class="card">
+    <h3>设备池</h3>
+    <div class="sub">多机协同，按分组与并发上限自动派发任务。</div>
+    <div id="dp-list">加载中…</div>
+  </div>`; },
+  bind(s) {
+    const r = async () => {
+      const r = await call('device-pool.list');
+      const box = document.getElementById('dp-list');
+      if (!r.ok) { box.innerHTML = `<div class="empty">${escapeHtml(r.error)}</div>`; return; }
+      const v = r.value ?? {};
+      const devices = Array.isArray(v.devices) ? v.devices : [];
+      const total = devices.length;
+      const online = devices.filter(d => d.status !== 'offline').length;
+      const busy = devices.filter(d => d.status === 'busy').length;
+      const idle = devices.filter(d => d.status === 'idle').length;
+      if (total === 0) {
+        box.innerHTML = `<div class="empty">设备池还没有设备，可在「设备」模块把设备加入「设备池」分组后在此派发任务。</div>`;
+        return;
+      }
+      box.innerHTML = `
+        <div class="row" style="margin-bottom:12px">
+          <div class="field"><label>设备总数</label><div style="font-size:18px;font-weight:600">${total}</div></div>
+          <div class="field"><label>在线</label><div style="font-size:18px;font-weight:600">${online}</div></div>
+          <div class="field"><label>空闲</label><div style="font-size:18px;font-weight:600">${idle}</div></div>
+          <div class="field"><label>忙碌</label><div style="font-size:18px;font-weight:600">${busy}</div></div>
+        </div>
+        <table class="table"><thead><tr><th>设备</th><th>分组</th><th>并发</th><th>状态</th></tr></thead>
+        <tbody>${devices.map(d => `<tr>
+          <td>${escapeHtml(d.name ?? d.serial)}<div class="mono" style="color:var(--ink-3);font-size:11.5px">${escapeHtml(d.serial)}</div></td>
+          <td>${(d.groups ?? []).map(g => `<span class="tag">${escapeHtml(g)}</span>`).join('') || '<span style="color:var(--ink-3)">未分组</span>'}</td>
+          <td>${escapeHtml(String(d.maxConcurrency ?? 1))}</td>
+          <td>${d.status === 'busy' ? '<span class="err">忙碌</span>' : d.status === 'offline' ? '<span class="off">离线</span>' : '<span class="ok">空闲</span>'}</td>
+        </tr>`).join('')}</tbody></table>`;
+    };
+    r();
+  },
+};
+
+modules['replay'] = {
+  render(s) { return `<div class="card">
+    <h3>执行回放</h3>
+    <div class="sub">把任务执行过程录成可分享的影片。</div>
+    <div id="rp-list">加载中…</div>
+  </div>`; },
+  bind(s) {
+    const r = async () => {
+      const r = await call('replay.listReplays');
+      const box = document.getElementById('rp-list');
+      if (!r.ok) { box.innerHTML = `<div class="empty">${escapeHtml(r.error)}</div>`; return; }
+      const rows = Array.isArray(r.value) ? r.value : (r.value?.replays ?? []);
+      if (rows.length === 0) { box.innerHTML = `<div class="empty">还没有任何回放</div>`; return; }
+      box.innerHTML = `<table class="table"><thead><tr><th>名称</th><th>任务</th><th>帧数</th><th>开始时间</th><th></th></tr></thead>
+        <tbody>${rows.map(rec => `<tr>
+          <td>${escapeHtml(rec.name ?? rec.id)}<div class="mono" style="color:var(--ink-3);font-size:11.5px">${escapeHtml(rec.id)}</div></td>
+          <td>${escapeHtml(rec.taskLabel ?? '—')}</td>
+          <td>${(rec.frames ?? []).length}</td>
+          <td class="mono">${escapeHtml(rec.startedAt ?? '')}</td>
+          <td style="display:flex;gap:6px">
+            <button class="ghost" data-export="${escapeHtml(rec.id)}">导出 HTML</button>
+            <button class="danger" data-del="${escapeHtml(rec.id)}">删除</button>
+          </td>
+        </tr>`).join('')}</tbody></table>`;
+      box.querySelectorAll('[data-export]').forEach(btn => btn.addEventListener('click', async () => {
+        const r = await call('replay.exportReplay', { id: btn.dataset.export, format: 'html' });
+        if (!r.ok) return toast('导出失败：' + r.error, 'err');
+        const blob = new Blob([r.value.html ?? r.value.content ?? ''], { type: 'text/html' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${btn.dataset.export}.html`;
+        a.click();
+      }));
+      box.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+        if (!confirm('删除？')) return;
+        await call('replay.removeReplay', { id: btn.dataset.del });
+        r();
+      }));
+    };
+    r();
+  },
+};
+
+/* ====================================================================== */
+/* Utilities                                                                */
+/* ====================================================================== */
+function csvList(s) {
+  return (s ?? '').split(/[,，;；\s]+/).map(t => t.trim()).filter(Boolean);
+}
+function safeJson(s) {
+  if (!s) return undefined;
+  try { return JSON.parse(s); } catch { return undefined; }
+}
+
+/* ====================================================================== */
+/* Bootstrap                                                                */
+/* ====================================================================== */
+async function bootstrap() {
+  state.status = await getStatus();
+  state.currentProject = state.status.activeProjectId;
+  if (state.status.projects) state.projects = state.status.projects;
+  else {
+    const r = await call('project-group.list');
+    if (r.ok) state.projects = r.value?.groups ?? [];
+  }
+  renderProjectSelect();
+  document.getElementById('project-select').addEventListener('change', async (e) => {
+    const id = e.target.value;
+    const r = await call('project-group.switch', { id });
+    if (!r.ok) return toast('切换失败：' + r.error, 'err');
+    state.currentProject = id;
+    toast('已切换项目组', 'ok');
+    renderStrip(); renderCenter(); if (state.view !== 'dashboard') renderPanel();
+  });
+  renderStrip();
+  renderCenter();
+  await refreshDevices();
+  startScreenshotPolling();
+}
+
+bootstrap().catch(error => {
+  console.error('bootstrap failed', error);
+  toast('启动失败：' + error.message, 'err');
+});
+</script>
+</body>
+</html>

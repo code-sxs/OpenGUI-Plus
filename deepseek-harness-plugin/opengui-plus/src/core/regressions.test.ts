@@ -213,6 +213,38 @@ describe('F-03 demo-recorder.toTemplate 真持久化', () => {
   })
 })
 
+describe('投屏：wlan-connection.screencap', () => {
+  it('fake runner 有 execOut 时直接返回 PNG 字节并写到 <dataDir>/screenshots', async () => {
+    const dataDir = tempDir()
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xff, 0xff])
+    const adb = createFakeAdbRunner({})
+    adb.execOut = async (args) => {
+      adb.calls.push(args.join(' '))
+      return { stdout: png, stderr: '', code: 0 }
+    }
+    const host = await PlusHost.create({ dataDir, adb, capabilities: { adb: true } })
+    const result = await host.call('wlan-connection.screencap', { serial: 'emulator-5554' })
+    expect(result.ok).toBe(true)
+    expect(result.value?.path).toMatch(/^screenshots\/emulator-5554-\d+\.png$/)
+    expect(result.value?.bytes).toBe(png.length)
+    const absolute = join(dataDir, result.value!.path as string)
+    const { readFile } = await import('node:fs/promises')
+    const onDisk = await readFile(absolute)
+    expect(onDisk.equals(png)).toBe(true)
+    expect(adb.calls.some(entry => entry.includes('exec-out screencap -p'))).toBe(true)
+  })
+
+  it('runner 没有 execOut 时走 shell+pull 兜底', async () => {
+    const dataDir = tempDir()
+    const adb = createFakeAdbRunner({})
+    const host = await PlusHost.create({ dataDir, adb, capabilities: { adb: true } })
+    const result = await host.call('wlan-connection.screencap', { serial: 'fallback-1' })
+    expect(result.ok).toBe(true)
+    expect(adb.calls.some(entry => entry.includes('shell screencap -p'))).toBe(true)
+    expect(adb.calls.some(entry => entry.includes('pull'))).toBe(true)
+  })
+})
+
 describe('F-05 action-template 变量替换', () => {
   it('执行时 {{pkg}} 被真实替换后再交给 adb', async () => {
     const adb = createFakeAdbRunner({ 'shell monkey*': { stdout: 'Events injected: 1', code: 0 } })

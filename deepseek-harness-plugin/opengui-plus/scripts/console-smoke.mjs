@@ -95,12 +95,16 @@ let registry = []
 }
 
 {
-  const html = readFileSync(join(ROOT, 'web/index.html'), 'utf8')
-  const used = [...new Set([...html.matchAll(TARGET_RE)].map(match => match[1]))]
+  const used = []
+  for (const file of ['web/index.html', 'web/app.html']) {
+    const html = readFileSync(join(ROOT, file), 'utf8')
+    for (const match of html.matchAll(TARGET_RE)) used.push(match[1])
+  }
+  const usedSet = [...new Set(used)]
   const known = new Set(registry.flatMap(m => (m.methodSpecs ?? []).map(s => `${m.id}.${s.name}`)))
-  const missing = used.filter(target => !known.has(target))
-  record('前端卡片方法名全部存在于注册表', missing.length === 0,
-    missing.length ? `不存在: ${missing.join(', ')}` : `校验 ${used.length} 个引用`)
+  const missing = usedSet.filter(target => !known.has(target))
+  record('前端卡片方法名全部存在于注册表（index + app）', missing.length === 0,
+    missing.length ? `不存在: ${missing.join(', ')}` : `校验 ${usedSet.length} 个引用`)
 }
 
 /* ---------------- 模块一 无线调试 ---------------- */
@@ -264,6 +268,11 @@ let registry = []
   const text = await page.text()
   record('GET /index.html 前端可加载', page.status === 200 && /<!doctype html>/i.test(text),
     `bytes=${text.length}`)
+
+  const app = await fetch(`${base}/app.html`)
+  const appText = await app.text()
+  record('GET /app.html 普通用户工作台可加载', app.status === 200 && /<!doctype html>/i.test(appText),
+    `bytes=${appText.length}`)
   const events = await fetch(`${base}/api/events/recent`)
   record('GET /api/events/recent', events.status === 200)
 }

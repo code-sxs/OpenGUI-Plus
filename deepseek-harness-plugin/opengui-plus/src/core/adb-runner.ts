@@ -30,12 +30,28 @@ export interface AdbRunner {
    */
   runWithStdin?(args: readonly string[], stdin: string, timeoutMs?: number): Promise<AdbRunResult>
   /**
+   * Run `adb <args>` and resolve with the raw stdout bytes.
+   *
+   * The text-oriented {@link AdbRunner.run} decodes stdout as UTF-8, which
+   * mangles binary data such as `screencap -p` PNG output. `execOut` is
+   * reserved for callers that need the exact byte stream. Optional so hand-
+   * written runners keep compiling; fall back to writing to `/sdcard/` and
+   * pulling when it is missing.
+   */
+  execOut?(args: readonly string[], timeoutMs?: number): Promise<{ readonly stdout: Buffer, readonly stderr: string, readonly code: number }>
+  /**
    * Cheap reachability check (`adb version`). Lets a host degrade to
    * console-only mode instead of advertising capabilities it cannot honour.
    */
   probe?(): Promise<boolean>
   /** Path of the adb binary in use, for display in the console. */
   readonly binary: string
+}
+
+export interface AdbRawResult {
+  readonly stdout: Buffer
+  readonly stderr: string
+  readonly code: number
 }
 
 export interface SpawnAdbOptions {
@@ -106,6 +122,57 @@ function spawnOnce(
   })
 }
 
+/**
+ * Same plumbing as {@link spawnOnce} but keeps stdout as raw Buffer, which
+ * is the only way to ship binary output (`screencap -p`, `dd`, …) back to
+ * the caller without mangling it through a UTF-8 codec.
+ */
+function spawnRawOnce(
+  binary: string,
+  args: readonly string[],
+  timeoutMs: number,
+  env: Readonly<Record<string, string | undefined>> | undefined,
+): Promise<AdbRawResult> {
+  return new Promise<AdbRawResult>((resolve, reject) => {
+    const child = spawn(binary, [...args], {
+      env: { ...process.env, ...(env ?? {}) } as NodeJS.ProcessEnv,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+    const stdoutChunks: Buffer[] = []
+    let stderr = ''
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      child.kill()
+      reject(new Error(`adb ${args.join(' ')}: timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    child.stdout.on('data', chunk => { stdoutChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string)) })
+    child.stderr.setEncoding('utf8')
+    child.stderr.on('data', chunk => { stderr += chunk })
+    child.stdin.on('error', () => undefined)
+    child.stdin.end()
+    child.on('error', (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve({
+        stdout: Buffer.alloc(0),
+        stderr: `adb 不可用（${error.message}）；请安装 platform-tools 或设置 OPENGUI_PLUS_ADB`,
+        code: 127,
+      })
+    })
+    child.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve({ stdout: Buffer.concat(stdoutChunks), stderr, code: code ?? 0 })
+    })
+  })
+}
+
 /** Real runner: spawns the adb binary. */
 export function createAdbRunner(options: SpawnAdbOptions = {}): AdbRunner {
   const binary = options.binary ?? process.env.OPENGUI_PLUS_ADB ?? 'adb'
@@ -116,6 +183,9 @@ export function createAdbRunner(options: SpawnAdbOptions = {}): AdbRunner {
     },
     async runWithStdin(args, stdin, timeoutMs = DEFAULT_TIMEOUT_MS) {
       return spawnOnce(binary, args, timeoutMs, stdin, options.env)
+    },
+    async execOut(args, timeoutMs = DEFAULT_TIMEOUT_MS) {
+      return spawnRawOnce(binary, args, timeoutMs, options.env)
     },
     async probe() {
       const result = await spawnOnce(binary, ['version'], PROBE_TIMEOUT_MS, undefined, options.env)

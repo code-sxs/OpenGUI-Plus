@@ -14,6 +14,8 @@
 
 import { execFile } from 'node:child_process'
 import { randomBytes, randomInt } from 'node:crypto'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 import type { AdbRunner, AdbRunResult } from '../../core/adb-runner.js'
@@ -67,6 +69,12 @@ export interface DeviceProfile {
   readonly favorite: boolean
   readonly lastUsedAt?: Iso8601
   readonly createdAt: Iso8601
+  /** Device-pool groups the device should belong to. */
+  readonly groups?: readonly string[]
+  /** Logical task identifier this device is reserved for (e.g. `qa-pixel-7`). */
+  readonly taskId?: string
+  /** Free-form notes shown in the device management panel. */
+  readonly notes?: string
 }
 
 export interface ConnectionStatus {
@@ -120,6 +128,18 @@ function isJsonRecord(value: unknown): value is Record<string, unknown> {
 function readString(source: Record<string, unknown>, key: string): string | undefined {
   const value = source[key]
   return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+/** Read a string[] field, accepting either an array or a comma-separated string. */
+function readStringList(source: Record<string, unknown>, key: string): string[] {
+  const raw = source[key]
+  if (Array.isArray(raw)) {
+    return raw.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+  }
+  if (typeof raw === 'string' && raw.length > 0) {
+    return raw.split(/[,，;；\s]+/).map(part => part.trim()).filter(part => part.length > 0)
+  }
+  return []
 }
 
 /** Optional Android 11+ pairing port, kept next to the connect port. */
@@ -638,11 +658,59 @@ export function createWirelessConnectionModule(): PlusModule {
         return { devices, mode: preference.mode, defaultDeviceId: preference.defaultDeviceId }
       },
 
+      /**
+       * Capture a PNG screenshot from a live adb device and write it under
+       * `<dataDir>/screenshots/` so the console can stream it through
+       * `/files/<path>`. The frontend polls this once per device every couple
+       * of seconds to drive the dashboard grid.
+       *
+       * Prefers `exec-out screencap -p` (one round-trip, raw bytes) when the
+       * runner exposes `execOut`; falls back to writing to `/sdcard/` and
+       * pulling the file for runners that do not.
+       */
+      async screencap(input) {
+        if (context === null) return fail('模块尚未启动')
+        if (context.adb === null) return fail('当前没有可用的 adb runner')
+        const serial = readString(input, 'serial') ?? ''
+        if (serial.length === 0) return fail('screencap 需要 serial')
+        const args = serial.length > 0 ? ['-s', serial, 'exec-out', 'screencap', '-p'] : ['exec-out', 'screencap', '-p']
+        const directory = join(context.dataDir, 'screenshots')
+        await mkdir(directory, { recursive: true })
+        const fileName = `${serial.replace(/[^a-zA-Z0-9._-]/g, '_') || 'device'}-${Date.now()}.png`
+        const absolute = join(directory, fileName)
+        const relative = `screenshots/${fileName}`
+
+        const runner = context.adb
+        if (typeof runner.execOut === 'function') {
+          const result = await runner.execOut(args)
+          if (result.code !== 0) return fail(`screencap 失败 (code ${result.code}): ${result.stderr.slice(0, 200)}`)
+          if (result.stdout.length === 0) return fail('screencap 返回空数据')
+          await writeFile(absolute, result.stdout)
+          return { path: relative, absolute, bytes: result.stdout.length, serial, takenAt: new Date().toISOString() }
+        }
+        const remote = `/sdcard/opengui-plus-${randomBytes(4).toString('hex')}.png`
+        const target = serial.length > 0 ? ['-s', serial] : []
+        const capture = await runner.run([...target, 'shell', 'screencap', '-p', remote])
+        if (capture.code !== 0) return fail(`screencap 失败 (code ${capture.code}): ${capture.stderr.slice(0, 200)}`)
+        const pull = await runner.run([...target, 'pull', remote, absolute])
+        if (pull.code !== 0) return fail(`pull 失败 (code ${pull.code}): ${pull.stderr.slice(0, 200)}`)
+        // Clean up the remote file; ignore errors.
+        await runner.run([...target, 'shell', 'rm', remote]).catch(() => undefined)
+        return { path: relative, absolute, bytes: Buffer.byteLength(pull.stdout, 'utf8'), serial, takenAt: new Date().toISOString() }
+      },
+
       async saveDevice(input) {
         const name = readString(input, 'name')
         const transport = readString(input, 'transport') === 'usb' ? 'usb' : 'wifi'
         const id = readString(input, 'id') ?? createId('dev')
         const now = new Date().toISOString()
+        // These three live in both the wlan-connection profile and the
+        // device-pool registry, so we keep them in lock-step: the device
+        // management TAB writes through here and the device-pool sees the
+        // changes on its next `list`/`listGroups`.
+        const groups = readStringList(input, 'groups')
+        const taskId = readString(input, 'taskId')
+        const notes = readString(input, 'notes')
         let profile: DeviceProfile
 
         if (transport === 'usb') {
@@ -660,6 +728,9 @@ export function createWirelessConnectionModule(): PlusModule {
               ? (existing?.model === undefined ? {} : { model: existing.model })
               : { model: readString(input, 'model')! }),
             ...(existing?.lastUsedAt === undefined ? {} : { lastUsedAt: existing.lastUsedAt }),
+            ...(groups.length === 0 ? {} : { groups }),
+            ...(taskId === undefined ? (existing?.taskId === undefined ? {} : { taskId: existing.taskId }) : { taskId }),
+            ...(notes === undefined ? (existing?.notes === undefined ? {} : { notes: existing.notes }) : { notes }),
           }
         }
         else {
@@ -679,6 +750,9 @@ export function createWirelessConnectionModule(): PlusModule {
               ? (existing?.model === undefined ? {} : { model: existing.model })
               : { model: readString(input, 'model')! }),
             ...(existing?.lastUsedAt === undefined ? {} : { lastUsedAt: existing.lastUsedAt }),
+            ...(groups.length === 0 ? {} : { groups }),
+            ...(taskId === undefined ? (existing?.taskId === undefined ? {} : { taskId: existing.taskId }) : { taskId }),
+            ...(notes === undefined ? (existing?.notes === undefined ? {} : { notes: existing.notes }) : { notes }),
           }
         }
 
@@ -1054,7 +1128,8 @@ export function createWirelessConnectionModule(): PlusModule {
       { name: 'setMode', summary: '设置连接模式', input: { mode: 'usb | wifi | auto', autoConnect: '启动时是否自动连接' } },
       { name: 'discover', summary: '探测 adb 当前可见的设备' },
       { name: 'listDevices', summary: '列出已保存的设备' },
-      { name: 'saveDevice', summary: '保存设备', input: { transport: 'usb | wifi', serial: 'USB 序列号', host: 'WiFi 地址', port: '连接端口，默认 5555', pairingPort: '可选，记住 Android 11+ 配对端口', name: '备注名' } },
+      { name: 'screencap', summary: '截取设备屏幕 PNG（供控制台投屏使用）', input: { serial: 'adb 序列号' } },
+      { name: 'saveDevice', summary: '保存设备', input: { transport: 'usb | wifi', serial: 'USB 序列号', host: 'WiFi 地址', port: '连接端口，默认 5555', pairingPort: '可选，记住 Android 11+ 配对端口', name: '备注名', groups: '设备分组（数组或逗号分隔）', taskId: '绑定的任务标识', notes: '备注' } },
       { name: 'removeDevice', summary: '删除已保存设备', input: { id: '设备 id' } },
       { name: 'connect', summary: '按当前或指定模式连接', input: { mode: '可选覆盖', id: '可选指定设备' } },
       { name: 'disconnect', summary: '断开当前连接' },
@@ -1143,6 +1218,9 @@ function normaliseProfile(row: Record<string, unknown>): DeviceProfile | null {
   const id = readString(row, 'id')
   const transport: Transport = row.transport === 'usb' ? 'usb' : 'wifi'
   if (id === undefined) return null
+  const groups = Array.isArray(row.groups)
+    ? row.groups.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+    : undefined
   const base = {
     id,
     name: readString(row, 'name') ?? id,
@@ -1151,6 +1229,9 @@ function normaliseProfile(row: Record<string, unknown>): DeviceProfile | null {
     createdAt: readString(row, 'createdAt') ?? new Date(0).toISOString(),
     ...(readString(row, 'model') === undefined ? {} : { model: readString(row, 'model')! }),
     ...(readString(row, 'lastUsedAt') === undefined ? {} : { lastUsedAt: readString(row, 'lastUsedAt')! }),
+    ...(groups === undefined || groups.length === 0 ? {} : { groups }),
+    ...(readString(row, 'taskId') === undefined ? {} : { taskId: readString(row, 'taskId')! }),
+    ...(readString(row, 'notes') === undefined ? {} : { notes: readString(row, 'notes')! }),
   }
   if (transport === 'usb') {
     const serial = readString(row, 'serial')
