@@ -19,6 +19,7 @@
  * @module modules/device-pool
  */
 
+import { callModule } from '../../core/call.js'
 import { PLUS_EVENTS } from '../../core/events.js'
 import { createId } from '../../core/id.js'
 import { defineModule, type ModuleContext, type PlusModule } from '../../core/module.js'
@@ -317,11 +318,16 @@ export function createDevicePoolModule(): PlusModule {
         const seen = new Set<string>()
         let reason = 'ok'
         try {
-          const result = context === null ? null : await context.call('wlan-connection.discover', {})
-          if (result === null || !result.ok) {
-            reason = result === null ? '模块未启动' : result.error
+          const result = context === null
+            ? null
+            : await callModule<{ readonly devices?: readonly unknown[] }>(context, 'wlan-connection.discover', {})
+          if (result === null) {
+            reason = '模块未启动'
           }
-          else if (isRecord(result.value) && Array.isArray(result.value.devices)) {
+          else if (!result.ok) {
+            reason = result.error
+          }
+          else if (Array.isArray(result.value?.devices)) {
             for (const row of result.value.devices) {
               if (!isRecord(row)) continue
               const serial = readString(row, 'serial')

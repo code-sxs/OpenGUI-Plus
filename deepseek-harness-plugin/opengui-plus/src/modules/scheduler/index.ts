@@ -11,6 +11,7 @@
  * @module modules/scheduler
  */
 
+import { callModule } from '../../core/call.js'
 import { PLUS_EVENTS } from '../../core/events.js'
 import { createId } from '../../core/id.js'
 import { defineModule, type ModuleContext, type PlusModule } from '../../core/module.js'
@@ -250,7 +251,53 @@ export function createSchedulerModule(): PlusModule {
 
   function appendRun(entry: ScheduleRunLog): void {
     runs = [...runs, entry].slice(-RUN_LOG_LIMIT)
-    void persistRuns()
+    // Fire-and-forget, but never unhandled: a failed run-log write is worth a
+    // warning, not a process crash.
+    void persistRuns().catch((error) => {
+      context?.logger.warn(`计划执行日志写入失败: ${error instanceof Error ? error.message : String(error)}`)
+    })
+  }
+
+  /**
+   * Confirm the target still exists.
+   *
+   * A schedule that points at a deleted snippet used to be accepted and then
+   * "succeed" forever, because the registry reports `ok: true` for any call
+   * that was merely dispatched. Checking here means `create`/`update` reject a
+   * dangling target instead of discovering it at 3am.
+   *
+   * Existence is checked without side effects: `list` (not `resolve`) for
+   * snippets, because `resolve` bumps `useCount`.
+   */
+  async function verifyTarget(target: ScheduleTarget): Promise<Result<true>> {
+    if (context === null) return ok(true)
+
+    if (target.type === 'snippet') {
+      const listed = await callModule<{ readonly snippets?: readonly { readonly alias?: unknown }[] }>(
+        context, 'snippet-library.list', {},
+      )
+      if (!listed.ok) return ok(true) // snippet-library absent/未启动: 留待运行时判断
+      const aliases = Array.isArray(listed.value?.snippets) ? listed.value.snippets : []
+      const hit = aliases.some(snippet => typeof snippet?.alias === 'string' && snippet.alias === target.alias)
+      return hit ? ok(true) : fail(`未找到快捷指令别名 "${target.alias}"`)
+    }
+
+    if (target.type === 'template') {
+      const found = await callModule<unknown>(context, 'action-template.get', { id: target.templateId })
+      if (!found.ok) return fail(`未找到动作模板 "${target.templateId}"：${found.error}`)
+      return ok(true)
+    }
+
+    for (const step of target.steps) {
+      const colon = step.indexOf(':')
+      const type = step.slice(0, colon)
+      const body = step.slice(colon + 1)
+      const check = type === 'snippet'
+        ? await verifyTarget({ type: 'snippet', alias: body })
+        : await verifyTarget({ type: 'template', templateId: body })
+      if (!check.ok) return fail(`流程步骤 "${step}"：${check.error}`)
+    }
+    return ok(true)
   }
 
   /** Dispatch one target; never throws. */
@@ -259,18 +306,25 @@ export function createSchedulerModule(): PlusModule {
     const target = task.target
 
     if (target.type === 'snippet') {
-      const result = await context.call('snippet-library.resolve', { alias: target.alias })
+      const result = await callModule<{ readonly command?: string }>(context, 'snippet-library.resolve', { alias: target.alias })
       return result.ok
         ? { ok: true, detail: `已解析别名 ${target.alias}` }
         : { ok: false, error: result.error }
     }
 
     if (target.type === 'template') {
-      const result = await context.call('action-template.execute', {
+      const result = await callModule<{ readonly ok?: boolean, readonly results?: readonly { readonly ok: boolean }[] }>(context, 'action-template.execute', {
         id: target.templateId,
         ...(target.variables === undefined ? {} : { variables: target.variables }),
       })
-      return result.ok ? { ok: true, detail: `已执行模板 ${target.templateId}` } : { ok: false, error: result.error }
+      if (!result.ok) return { ok: false, error: result.error }
+      // `execute` returns an execution report whose steps may still have failed.
+      const report = result.value
+      const steps = Array.isArray(report?.results) ? report.results : []
+      const failed = steps.filter(step => step.ok === false).length
+      return failed === 0
+        ? { ok: true, detail: `已执行模板 ${target.templateId}（${steps.length} 步全部成功）` }
+        : { ok: false, error: `模板 ${target.templateId} 有 ${failed}/${steps.length} 步失败` }
     }
 
     const details: string[] = []
@@ -280,7 +334,7 @@ export function createSchedulerModule(): PlusModule {
       const body = step.slice(colon + 1)
       const callTarget = type === 'snippet' ? 'snippet-library.resolve' : 'action-template.execute'
       const input = type === 'snippet' ? { alias: body } : { id: body }
-      const result = await context.call(callTarget, input)
+      const result = await callModule<unknown>(context, callTarget, input)
       if (!result.ok) {
         return { ok: false, error: `步骤 "${step}" 失败：${result.error}` }
       }
@@ -358,6 +412,12 @@ export function createSchedulerModule(): PlusModule {
         if (!schedule.ok) return fail(schedule.error)
         const target = parseTarget(input.target)
         if (!target.ok) return fail(target.error)
+        // Reject a dangling target up front; a schedule that can never fire is
+        // worse than one that was refused.
+        if (input.skipTargetCheck !== true) {
+          const exists = await verifyTarget(target.value)
+          if (!exists.ok) return fail(exists.error)
+        }
         const now = new Date().toISOString()
         const task: ScheduledTask = {
           id: createId('sch'),
@@ -396,6 +456,10 @@ export function createSchedulerModule(): PlusModule {
           const parsed = parseTarget(input.target)
           if (!parsed.ok) return fail(parsed.error)
           target = parsed.value
+          if (input.skipTargetCheck !== true) {
+            const exists = await verifyTarget(target)
+            if (!exists.ok) return fail(exists.error)
+          }
         }
 
         const updated: ScheduledTask = {
@@ -484,9 +548,9 @@ export function createSchedulerModule(): PlusModule {
     },
 
     methodSpecs: [
-      { name: 'create', summary: '创建定时任务', input: { name: '任务名', schedule: '{ kind, at | weekdays | expression }', target: '{ type: snippet | template | flow, ... }', enabled: '是否启用，默认 true' } },
+      { name: 'create', summary: '创建定时任务（会校验目标是否存在）', input: { name: '任务名', schedule: '{ kind, at | weekdays | expression }', target: '{ type: snippet | template | flow, ... }', enabled: '是否启用，默认 true', skipTargetCheck: 'true 时跳过目标存在性校验' } },
       { name: 'list', summary: '列出全部任务' },
-      { name: 'update', summary: '修改任务', input: { id: '任务 id', name: '名称', schedule: '计划', target: '目标', enabled: '是否启用' } },
+      { name: 'update', summary: '修改任务（会校验目标是否存在）', input: { id: '任务 id', name: '名称', schedule: '计划', target: '目标', enabled: '是否启用', skipTargetCheck: 'true 时跳过目标存在性校验' } },
       { name: 'remove', summary: '删除任务', input: { id: '任务 id' } },
       { name: 'enable', summary: '启用任务', input: { id: '任务 id' } },
       { name: 'disable', summary: '停用任务', input: { id: '任务 id' } },

@@ -12,7 +12,7 @@ The `OpenGUI-Plus` enhancement layer lives in [`opengui-plus/`](./opengui-plus/)
 
 | Module | Main capabilities |
 |---|---|
-| **Wireless debugging** `wlan-connection` | USB / WiFi / auto-connect, remembered devices, live status, Android 11+ pairing |
+| **Wireless debugging** `wlan-connection` | USB / WiFi / auto modes, remembered devices, live status, Android 11+ pairing by six-digit code or QR (mDNS-resolved pairing port) |
 | **Snippet library** `snippet-library` | Command aliases, tags, autocomplete, JSON import/export |
 | **Action templates** `action-template` | Multi-step recording, `{{variables}}`, parameterized one-click execution |
 | **Scheduler** `scheduler` | One-shot / daily / weekly / Cron jobs for snippets, templates, and flows |

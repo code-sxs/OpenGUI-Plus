@@ -10,7 +10,7 @@
 
 | # | 模块 | 解决什么 |
 |---|------|---------|
-| 1 | 无线调试连接 `wlan-connection` | USB / WiFi / 自动三模式连接，记住设备，实时状态 |
+| 1 | 无线调试连接 `wlan-connection` | USB / WiFi / 自动三模式连接，记住设备，实时状态；Android 11+ 六位配对码配对与二维码配对（mDNS 自动解析配对端口） |
 | 2 | 快捷指令库 `snippet-library` | 别名 + 标签 + 自动补全，JSON 导入导出 |
 | 3 | 动作模板录制 `action-template` | 录制多步操作，参数化变量，一键执行 |
 | 4 | 定时任务 `scheduler` | 单次 / 每天 / 每周 / Cron，执行指令·模板·流程 |
@@ -103,7 +103,17 @@ opengui-plus help
 
 ### 模块一 · 无线调试连接 `wlan-connection`
 
-**定位**：把 Android 设备的 USB / WiFi / 自动三种连接方式统一管理，记住常用设备，实时反映连接状态。
+**定位**：把 Android 设备的 USB / WiFi / 自动三种连接方式统一管理，记住常用设备，实时反映连接状态，并完整支持 Android 11+ 的两种无线配对入口。
+
+**两种无线配对**
+
+| 配对方向 | 手机上的入口 / 动作 | 方法 | 需要什么 |
+|---|---|---|---|
+| 手机显示二维码，电脑读取 | 使用二维码配对设备 | `pairWithQr` | 二维码文本（`qrText`）或图片路径（`image`，需本机装有 `zbarimg`） |
+| 电脑显示二维码，手机读取（反向流） | 手机打开无线调试的二维码扫描入口 | `generatePairingQr` + `startQrPairing` | 电脑屏幕、手机与电脑同一局域网；方法会等待 mDNS 配对服务 |
+| 手机显示配对码，电脑输入 | 使用配对码配对设备 | `pairWithCode` | `host` + 配对端口 + 6 位配对码 |
+
+配对端口与连接端口是两个不同的端口：配对端口每次打开配对页面都会变，连接端口通常是 5555。二维码中携带服务名和 6 位配对码；`pairWithQr` / `startQrPairing` 会通过 `adb mdns services` 自动解析出 `host:port`；解析不到时错误信息会写明原因，不会假装成功。`pairAndConnect` 把配对、连接、记档合成一步。
 
 **关键方法**
 
@@ -113,11 +123,20 @@ opengui-plus help
 | `setMode` | 设置连接模式（usb / wifi / auto） |
 | `discover` | 探测 adb 当前可见的设备 |
 | `listDevices` | 列出已保存的设备 |
-| `saveDevice` | 保存设备（名称 / 传输方式 / host / port） |
+| `saveDevice` | 保存设备（名称 / 传输方式 / host / port / 可选 pairingPort） |
 | `removeDevice` | 删除已保存设备 |
 | `connect` | 按当前或指定模式连接 |
 | `disconnect` | 断开当前连接 |
-| `pair` | Android 11+ 无线配对 |
+| `pair` | 统一配对入口，自动识别配对码、手机二维码或反向二维码流 |
+| `generatePairingQr` | 电脑生成二维码，返回文本、ASCII、PNG Base64 和 Data URL |
+| `startQrPairing` | 显示/返回电脑二维码，轮询 mDNS，手机扫描后自动 `adb pair`，可继续连接 |
+| `pairWithCode` | 六位配对码配对 |
+| `pairWithQr` | 手机显示二维码时，读取二维码并自动 mDNS 解析配对端口 |
+| `pairAndConnect` | 配对后直接连接并记档（推荐） |
+| `mdnsServices` | 列出 mDNS 服务，区分配对端口与连接端口 |
+| `parsePairingQr` | 只解析二维码，不连设备 |
+| `decodePairingQr` | 用外部解码器识别二维码图片 |
+| `pairingGuide` | 配对操作指引与排障清单 |
 | `enableTcpip` | 将 USB 设备切换到 TCP/IP 模式 |
 | `autoConnect` | 启动时自动连接（内部调用） |
 
@@ -130,6 +149,17 @@ opengui-plus call wlan-connection.saveDevice --transport wifi --host 192.168.1.2
 opengui-plus connect --mode auto
 # 查看状态
 opengui-plus call wlan-connection.status
+
+# 六位配对码配对并连接
+opengui-plus call wlan-connection.pairAndConnect --json '{"host":"192.168.1.23","port":39443,"code":"123456","name":"小米14"}'
+# 手机显示二维码，电脑读取并配对连接
+opengui-plus call wlan-connection.pairAndConnect --json '{"qrText":"WIFI:T:ADB;S:studio-abc123._adb-tls-pairing._tcp;P:123456;;","name":"小米14"}'
+# 电脑生成二维码；把返回的 dataUrl / pngBase64 显示到屏幕
+opengui-plus call wlan-connection.generatePairingQr --json '{"serviceName":"studio-opengui","code":"123456"}'
+# 手机扫描电脑二维码后，轮询 mDNS，自动配对并连接；可用 timeoutMs 调整等待时间
+opengui-plus call wlan-connection.startQrPairing --json '{"serviceName":"studio-opengui","code":"123456","timeoutMs":60000,"name":"小米14"}'
+# 看 mDNS 上有哪些配对 / 连接服务
+opengui-plus call wlan-connection.mdnsServices
 ```
 
 **数据存储**：`devices.json`（已保存设备）、`state.json`（当前模式与连接）。
@@ -326,7 +356,48 @@ opengui-plus call replay.exportReplay --id <sid> --format html
 ```bash
 npm run typecheck   # tsc --noEmit
 npm test            # vitest run
-npm run check       # typecheck + test + build
+npm run build       # 产出 lib/
+npm run smoke       # 冒烟：真实起控制台，跑通十个模块
+npm run check       # 以上全部串起来
 ```
 
 新增模块只需在 `src/modules/<your-module>/index.ts` 用 `defineModule({...})` 导出，并在 `src/index.ts` 的 `defaultModules` 里追加即可，无需改动任何其它模块。
+
+## 8. 控制台前端
+
+`web/index.html` 是零依赖单页控制台（`npm start` 后访问打印出来的地址）。它分两层：
+
+1. **常用卡片**：手工编排的高频操作，覆盖十个模块，字段带中文提示。
+2. **方法浏览器**：下拉框由 `/api/modules` 的 `methodSpecs` 动态生成，**全部 100+ 个方法都可达**；服务端新增方法后前端无需改动即可调用。
+
+几个实现约定：
+
+- 注册表的每次调用都会包一层 `{ ok: true, value }`，模块自身也可能返回 `Result`，因此前端要做**两次解包**。判定内层信封时必须严格：`ok === true` 要有 `value` 键、`ok === false` 要有字符串 `error`，否则会把执行报告（`{ ok: true, results: [...] }`）误当成信封。
+- 前端启动时用 `/api/modules` 反向校验所有写死的方法名，不匹配会在概览页给出警告——避免服务端改名后前端只表现为一个无声的 400。
+- 返回里的二维码（`dataUrl` / `pngBase64`）、截图（`/files/<path>`）、HTML 回放会分别渲染成图片、缩略图和下载链接。
+
+## 9. 验收缺陷修复记录（F-01 … F-05）
+
+DeepSeek Harness 首轮验收跑了 67 项测试，暴露 5 个缺陷，均已修复并加了回归测试（`src/core/regressions.test.ts`）：
+
+| 编号 | 症状 | 根因 | 修复 |
+| --- | --- | --- | --- |
+| F-01 | 定时任务指向不存在的目标也创建成功 | `context.call` 返回外层恒为 `ok: true` 的双层包装 | 新增 `src/core/call.ts` 的 `callModule()` 统一解包；`create`/`update` 增加 `verifyTarget()`（可用 `skipTargetCheck: true` 跳过） |
+| F-02 | Windows 上切换项目组偶发 EPERM | 两方同时 rename 同一个 `current-project.json` | 原子写加 rename 重试退避 + 唯一临时名 + 直接写兜底；切换改为 awaited 的 `__host__.switchProject` 单一写者 |
+| F-03 | 演示录制转模板"成功"但模板库里没有 | 传了 `{ template }` 而 `save-from-demo` 要 `{ name, steps }`，且只查外层 `ok` | 改为传字段 + `callModule` 解包，返回 `templateId` |
+| F-04 | dsh-tools 下注册 0 个工具 | spec 缺必填的 `output.render`，`parameters` 用了 JSON Schema 方言 | `src/dsh/adapter.ts` 改为**方言探测**（modern / legacy 两套 spec），并修正 `dshToolName` 的驼峰切分 |
+| F-05 | 模板执行时 `{{变量}}` 原样下发到 adb | 各分支读的是替换前的 `step.params` | 全部改为读 `resolveParams()` 的结果 |
+
+### 修复过程中额外发现并修掉的两个问题
+
+- **`project-group.current` 切换后恒为 `null`**：`switch` 会触发宿主的 `reseatAll`，模块被重新加载时读到的还是旧文件，随后 `persistCurrent()` 又把旧值写回去——而这个键（`current-project`）正是宿主刚写过的同一个文件，等于把宿主指针擦掉。现在 `load()` 会把宿主的 `ctx.projectId` 作为兜底，`switch` 完成后也会重新断言指针。
+- **`store.update` 自锁死**：`update` 若内部再调 `set()`，会在同一个 key 上二次入队并等待外层任务，永不 settle。已改为内联写路径。
+
+### 验证结果
+
+```
+tsc --noEmit        0 error
+vitest run          4 文件 / 69 测试通过
+tsc                 构建产出 lib/ 成功
+npm run smoke       29 项全通过（真实 HTTP + 十大模块）
+```

@@ -14,8 +14,9 @@
  * @module core/store
  */
 
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
 import { dirname, join, resolve, sep } from 'node:path'
 
 /**
@@ -40,6 +41,30 @@ const ENVELOPE_VERSION = 1
 interface Envelope {
   readonly version: number
   readonly data: unknown
+}
+
+/**
+ * Windows-specific: `rename` over an existing file fails with `EPERM`/`EBUSY`
+ * while an antivirus or the indexer still holds the destination (or the temp
+ * we just wrote) open. It is transient, so we retry with a short backoff
+ * instead of failing the whole project switch.
+ */
+const RENAME_RETRY_CODES = new Set(['EPERM', 'EBUSY', 'EACCES', 'ENOTEMPTY', 'EAGAIN'])
+const RENAME_ATTEMPTS = 6
+const RENAME_BASE_DELAY_MS = 25
+
+function isRetryable(error: unknown): boolean {
+  const code = (error as { readonly code?: unknown } | null)?.code
+  return typeof code === 'string' && RENAME_RETRY_CODES.has(code)
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/** Make the temp file unique per write; a fixed name collides across callers. */
+function tempPathFor(file: string): string {
+  return `${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`
 }
 
 /** Read/write surface scoped to one project (or to the global namespace). */
@@ -71,24 +96,65 @@ export class ScopedStore {
   }
 
   async set<T>(key: string, value: T): Promise<void> {
-    return this.enqueue(key, async () => {
-      await mkdir(this.directory, { recursive: true })
-      const file = this.fileFor(key)
-      const tmp = `${file}.${process.pid}.tmp`
-      const envelope: Envelope = { version: ENVELOPE_VERSION, data: value }
-      await writeFile(tmp, `${JSON.stringify(envelope, null, 2)}\n`, 'utf8')
-      await rename(tmp, file)
-    })
+    return this.enqueue(key, () => this.write(key, value))
   }
 
-  /** Read-modify-write without a lost-update window. */
+  /**
+   * Read-modify-write without a lost-update window.
+   *
+   * Deliberately *not* implemented as `enqueue(() => this.set(...))`: `set`
+   * would enqueue on the same key a second time and wait for the outer task to
+   * settle, which never happens — a self-deadlock. The write is inlined so the
+   * whole read-modify-write stays inside one queue slot.
+   */
   async update<T>(key: string, fallback: T, mutate: (current: T) => T): Promise<T> {
     return this.enqueue(key, async () => {
       const current = await this.get(key, fallback)
       const next = mutate(current)
-      await this.set(key, next)
+      await this.write(key, next)
       return next
-    }) as Promise<T>
+    })
+  }
+
+  /** Atomic-ish write: temp file + retried rename, with a direct-write fallback. */
+  private async write<T>(key: string, value: T): Promise<void> {
+    await mkdir(this.directory, { recursive: true })
+    const file = this.fileFor(key)
+    const tmp = tempPathFor(file)
+    const envelope: Envelope = { version: ENVELOPE_VERSION, data: value }
+    const body = `${JSON.stringify(envelope, null, 2)}\n`
+    try {
+      await writeFile(tmp, body, 'utf8')
+    }
+    catch (error) {
+      await unlink(tmp).catch(() => undefined)
+      throw error
+    }
+
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await rename(tmp, file)
+        return
+      }
+      catch (error) {
+        const last = attempt >= RENAME_ATTEMPTS
+        if (last || !isRetryable(error)) {
+          // Last resort: give up atomicity rather than lose the write. A
+          // partially written document is recovered by `get`'s corrupt-file
+          // fallback, whereas dropping the write loses user data outright.
+          try {
+            await writeFile(file, body, 'utf8')
+            await unlink(tmp).catch(() => undefined)
+            return
+          }
+          catch {
+            await unlink(tmp).catch(() => undefined)
+            throw error
+          }
+        }
+        await sleep(RENAME_BASE_DELAY_MS * attempt)
+      }
+    }
   }
 
   async delete(key: string): Promise<void> {

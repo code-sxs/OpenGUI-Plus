@@ -16,6 +16,7 @@
  * @module modules/project-group
  */
 
+import { callModule } from '../../core/call.js'
 import { PLUS_EVENTS } from '../../core/events.js'
 import { createId } from '../../core/id.js'
 import { defineModule, type ModuleContext, type PlusModule } from '../../core/module.js'
@@ -97,10 +98,18 @@ export function createProjectGroupModule(): PlusModule {
     groups = Array.isArray(stored)
       ? (stored as readonly unknown[]).filter(isRecord).map(normaliseGroup).filter((row): row is ProjectGroup => row !== null)
       : []
+
+    // `CURRENT_KEY` is the very file the host owns (`global/current-project.json`).
+    // Reading it alone is not enough: the host re-seats every module *before*
+    // the switch is finished, so during that window the file still holds the
+    // previous id while the host context already knows the new one. Trusting
+    // `ctx.projectId` as a fallback keeps the in-memory pointer aligned with
+    // the host instead of snapping back to null.
     const storedCurrent = await ctx.global.get<string | null>(CURRENT_KEY, null)
-    currentId = typeof storedCurrent === 'string' && groups.some(group => group.id === storedCurrent)
-      ? storedCurrent
-      : null
+    const candidates = [storedCurrent, ctx.projectId]
+    currentId = candidates
+      .filter((value): value is string => typeof value === 'string')
+      .find(value => groups.some(group => group.id === value)) ?? null
   }
 
   /** Queue a project id for the host to physically delete later. */
@@ -116,10 +125,16 @@ export function createProjectGroupModule(): PlusModule {
     return groups.find(group => group.id === id)
   }
 
-  /** Call the internal host module, turning "not wired up" into a clear error. */
+  /**
+   * Call the internal host module, turning "not wired up" into a clear error.
+   *
+   * Uses `callModule` so the callee's own `Result` is what we inspect: the
+   * registry always reports `ok: true` for a dispatched call, and trusting
+   * that outer envelope is how a failed host call used to look like success.
+   */
   async function callHost(method: string, input: Record<string, unknown>): Promise<Result<unknown>> {
     if (context === null) return fail('模块未启动')
-    const result = await context.call(`${HOST_MODULE}.${method}`, input)
+    const result = await callModule(context, `${HOST_MODULE}.${method}`, input)
     if (!result.ok && /unknown module|not started/i.test(result.error)) {
       return fail(`宿主能力 __host__.${method} 未就绪：${result.error}`)
     }
@@ -162,9 +177,16 @@ export function createProjectGroupModule(): PlusModule {
       },
 
       /**
-       * Switch the active group. Only the event is published here: the host
-       * listens for `projectSwitched` and re-seats every module, so this module
-       * never touches another module's state.
+       * Switch the active group.
+       *
+       * The module owns `projects.json`; the host owns re-seating every module
+       * and writing `current-project.json`. Doing both through one awaited
+       * `__host__.switchProject` call keeps a single writer on that file, which
+       * is what removes the Windows `EPERM` rename race.
+       *
+       * The `projectSwitched` event is still published for observers, but only
+       * after the switch has landed — the host's own listener sees the id
+       * already current and no-ops.
        */
       async switch(input) {
         const id = readString(input, 'id')
@@ -175,11 +197,30 @@ export function createProjectGroupModule(): PlusModule {
         currentId = id
         groups = groups.map(row => (row.id === id ? { ...row, lastUsedAt: now, updatedAt: now } : row))
         await persistGroups()
+
+        const switched = await callHost('switchProject', { id })
+
+        // The host re-seated this module while switching, which re-ran `load()`
+        // against a file that had not been updated yet. Re-assert the intended
+        // id before persisting, otherwise `persistCurrent()` would write the
+        // stale pointer back over the value the host just wrote.
+        currentId = id
+
+        if (!switched.ok) {
+          // No host (standalone console, or an older host): fall back to
+          // writing the pointer ourselves and announcing the change.
+          await persistCurrent()
+          if (context !== null) {
+            context.events.publish('project-group', PLUS_EVENTS.projectSwitched, { projectId: id, name: group.name })
+          }
+          return fail(`已记录项目组 "${id}"，但宿主未能完成切换：${switched.error}`)
+        }
+
         await persistCurrent()
         if (context !== null) {
           context.events.publish('project-group', PLUS_EVENTS.projectSwitched, { projectId: id, name: group.name })
         }
-        return { current: find(id) ?? group, switched: true }
+        return { current: find(id) ?? group, switched: true, projectId: id }
       },
 
       async update(input) {
@@ -260,7 +301,11 @@ export function createProjectGroupModule(): PlusModule {
           ...(readString(input, 'name') === undefined ? {} : { name: readString(input, 'name')! }),
         })
         if (!result.ok) return fail(result.error)
-        const value = result.value
+        // The host answers with `{ project: { id, name, … } }`; older hosts and
+        // hand-rolled callers may answer with the project fields at the top
+        // level. Both are accepted so importing never depends on the wrapper.
+        const raw = result.value
+        const value = isRecord(raw) && isRecord(raw.project) ? raw.project : raw
         if (!isRecord(value) || readString(value, 'id') === undefined) {
           return fail('宿主返回的导入结果缺少 id 字段')
         }

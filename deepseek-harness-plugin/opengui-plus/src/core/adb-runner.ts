@@ -20,6 +20,20 @@ export interface AdbRunResult {
 export interface AdbRunner {
   /** Run `adb <args>` and resolve with the captured output. */
   run(args: readonly string[], timeoutMs?: number): Promise<AdbRunResult>
+  /**
+   * Run `adb <args>` and write `stdin` to the child process.
+   *
+   * `adb pair <host:port>` on older platform-tools builds prints
+   * `Enter pairing code:` and reads the secret from stdin instead of taking it
+   * as an argument. Optional so hand-written runners keep compiling; callers
+   * must fall back to {@link AdbRunner.run} when it is missing.
+   */
+  runWithStdin?(args: readonly string[], stdin: string, timeoutMs?: number): Promise<AdbRunResult>
+  /**
+   * Cheap reachability check (`adb version`). Lets a host degrade to
+   * console-only mode instead of advertising capabilities it cannot honour.
+   */
+  probe?(): Promise<boolean>
   /** Path of the adb binary in use, for display in the console. */
   readonly binary: string
 }
@@ -32,6 +46,65 @@ export interface SpawnAdbOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 20_000
+const PROBE_TIMEOUT_MS = 10_000
+
+/** Shared spawn plumbing for both `run` and `runWithStdin`. */
+function spawnOnce(
+  binary: string,
+  args: readonly string[],
+  timeoutMs: number,
+  stdin: string | undefined,
+  env: Readonly<Record<string, string | undefined>> | undefined,
+): Promise<AdbRunResult> {
+  return new Promise<AdbRunResult>((resolve, reject) => {
+    // stdin is always a pipe so the same code path serves both entry points;
+    // callers that pass no input simply close it immediately.
+    const child = spawn(binary, [...args], {
+      env: { ...process.env, ...(env ?? {}) } as NodeJS.ProcessEnv,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      child.kill()
+      reject(new Error(`adb ${args.join(' ')}: timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', chunk => { stdout += chunk })
+    child.stderr.on('data', chunk => { stderr += chunk })
+    child.stdin.on('error', () => { /* adb may exit before reading stdin */ })
+    if (stdin === undefined) child.stdin.end()
+    else {
+      child.stdin.write(stdin)
+      child.stdin.end()
+    }
+    child.on('error', (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      // A missing adb binary is a normal state, not an exception: machines
+      // without platform-tools still run the CLI and the console. Rejecting
+      // here used to crash `opengui-plus modules` with an unhandled rejection.
+      resolve({
+        stdout: '',
+        stderr: `adb 不可用（${error.message}）；请安装 platform-tools 或设置 OPENGUI_PLUS_ADB`,
+        code: 127,
+      })
+    })
+    child.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve({ stdout, stderr, code: code ?? 0 })
+    })
+  })
+}
 
 /** Real runner: spawns the adb binary. */
 export function createAdbRunner(options: SpawnAdbOptions = {}): AdbRunner {
@@ -39,39 +112,14 @@ export function createAdbRunner(options: SpawnAdbOptions = {}): AdbRunner {
   return {
     binary,
     async run(args, timeoutMs = DEFAULT_TIMEOUT_MS) {
-      return new Promise<AdbRunResult>((resolve, reject) => {
-        const child = spawn(binary, [...args], {
-          env: { ...process.env, ...(options.env ?? {}) } as NodeJS.ProcessEnv,
-          stdio: ['ignore', 'pipe', 'pipe'],
-          windowsHide: true,
-        })
-        let stdout = ''
-        let stderr = ''
-        let settled = false
-        const timer = setTimeout(() => {
-          if (settled) return
-          settled = true
-          child.kill()
-          reject(new Error(`adb ${args.join(' ')}: timed out after ${timeoutMs}ms`))
-        }, timeoutMs)
-
-        child.stdout.setEncoding('utf8')
-        child.stderr.setEncoding('utf8')
-        child.stdout.on('data', chunk => { stdout += chunk })
-        child.stderr.on('data', chunk => { stderr += chunk })
-        child.on('error', (error) => {
-          if (settled) return
-          settled = true
-          clearTimeout(timer)
-          reject(new Error(`adb ${args.join(' ')}: ${error.message}`))
-        })
-        child.on('close', (code) => {
-          if (settled) return
-          settled = true
-          clearTimeout(timer)
-          resolve({ stdout, stderr, code: code ?? 0 })
-        })
-      })
+      return spawnOnce(binary, args, timeoutMs, undefined, options.env)
+    },
+    async runWithStdin(args, stdin, timeoutMs = DEFAULT_TIMEOUT_MS) {
+      return spawnOnce(binary, args, timeoutMs, stdin, options.env)
+    },
+    async probe() {
+      const result = await spawnOnce(binary, ['version'], PROBE_TIMEOUT_MS, undefined, options.env)
+      return result.code === 0 && /android debug bridge/i.test(result.stdout)
     },
   }
 }
@@ -98,18 +146,35 @@ export interface FakeAdbRunner extends AdbRunner {
  */
 export function createFakeAdbRunner(script: AdbScript = {}, binary = 'adb-fake'): FakeAdbRunner {
   const calls: string[] = []
+
+  function lookup(args: readonly string[]): AdbRunResult {
+    const key = args.join(' ')
+    const hit = script[key]
+    if (hit !== undefined) return normalise(hit)
+    for (const [pattern, value] of Object.entries(script)) {
+      if (pattern.endsWith('*') && key.startsWith(pattern.slice(0, -1))) return normalise(value)
+    }
+    return { stdout: '', stderr: '', code: 0 }
+  }
+
   return {
     binary,
     calls,
     async run(args) {
-      const key = args.join(' ')
-      calls.push(key)
+      calls.push(args.join(' '))
+      return lookup(args)
+    },
+    async runWithStdin(args, stdin) {
+      // Record the piped secret as `(stdin: …)` so tests can assert the code
+      // really was written to adb without leaking it into a bare command log.
+      calls.push(`${args.join(' ')} (stdin: ${stdin.trim()})`)
+      const key = `${args.join(' ')} <${stdin.trim()}>`
       const hit = script[key]
       if (hit !== undefined) return normalise(hit)
-      for (const [pattern, value] of Object.entries(script)) {
-        if (pattern.endsWith('*') && key.startsWith(pattern.slice(0, -1))) return normalise(value)
-      }
-      return { stdout: '', stderr: '', code: 0 }
+      return lookup(args)
+    },
+    async probe() {
+      return script.probe === undefined ? true : normalise(script.probe).stdout !== 'unavailable'
     },
   }
 }

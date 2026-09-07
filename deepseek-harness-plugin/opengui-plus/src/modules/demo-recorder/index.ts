@@ -16,6 +16,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
+import { callModule } from '../../core/call.js'
 import { PLUS_EVENTS } from '../../core/events.js'
 import { createId } from '../../core/id.js'
 import { defineModule, type ModuleContext, type PlusModule } from '../../core/module.js'
@@ -253,9 +254,36 @@ export function createDemoRecorderModule(options: DemoRecorderOptions = {}): Plu
         if (context === null) {
           return { persisted: false, reason: '模块尚未启动', template }
         }
+        // Default to the recording's own name; the caller may override both
+        // fields so a demo can be re-exported under a different title.
+        const name = readString(input, 'name') ?? template.name
+        const description = readString(input, 'description') ?? template.description
         try {
-          const result = await context.call('action-template.save-from-demo', { template })
-          if (result.ok) return { persisted: true, template, result: result.value }
+          // `save-from-demo` takes the fields, not the wrapped document: it
+          // needs `{ name, steps }` where each step is `{ action, params }`.
+          // Handing it `{ template }` produced a validation failure that the
+          // old code could not see, because the registry reports `ok: true`
+          // for any call that was merely dispatched.
+          const result = await callModule<{ readonly template?: { readonly id?: string, readonly name?: string } }>(
+            context,
+            'action-template.save-from-demo',
+            {
+              name,
+              ...(description === undefined ? {} : { description }),
+              steps: template.steps.map(step => ({
+                action: step.action,
+                params: step.params,
+                ...(step.note === undefined ? {} : { note: step.note }),
+              })),
+            },
+          )
+          if (result.ok) {
+            return {
+              persisted: true,
+              template,
+              templateId: result.value?.template?.id,
+            }
+          }
           return { persisted: false, reason: result.error, template }
         }
         catch (error) {
@@ -276,7 +304,7 @@ export function createDemoRecorderModule(options: DemoRecorderOptions = {}): Plu
       { name: 'getDemo', summary: '查看单个录制', input: { id: '录制 id' } },
       { name: 'removeDemo', summary: '删除录制', input: { id: '录制 id' } },
       { name: 'revise', summary: '修正示范：全量替换步骤并升级修订号', input: { id: '录制 id', steps: '修正后的步骤数组', note: '修订说明' } },
-      { name: 'toTemplate', summary: '导出为工作流模板并尝试写入动作模板模块', input: { id: '录制 id' } },
+      { name: 'toTemplate', summary: '导出为工作流模板并尝试写入动作模板模块', input: { id: '录制 id', name: '可选，覆盖模板名（默认用录制名）', description: '可选，覆盖说明' } },
     ],
 
     async start(ctx) {

@@ -24,7 +24,7 @@ OpenGUI-Plus 的核心层和 DSH 适配层是解耦的。即便 DSH 当前只加
 
 【项目目标】
 OpenGUI-Plus 是 Core-Mate/OpenGUI 的增强层，位于 deepseek-harness-plugin/opengui-plus/。它以解耦 DSH 插件形式提供十个模块：
-1. wlan-connection：无线调试连接
+1. wlan-connection：无线调试连接（USB / WiFi / 自动三种模式；Android 11+ 支持**六位配对码配对**、**手机显示二维码让电脑读取**，以及**电脑生成二维码让手机扫描的反向配对流**；二维码走 mDNS 自动解析配对端口；配对端口与连接端口是两个不同端口）
 2. snippet-library：快捷指令库
 3. action-template：动作模板录制与参数化执行
 4. scheduler：单次 / 每天 / 每周 / Cron 定时任务
@@ -44,6 +44,9 @@ OpenGUI-Plus 是 Core-Mate/OpenGUI 的增强层，位于 deepseek-harness-plugin
 6. 真实设备测试必须分层：先 discover / status，再连接，再做只读或低风险动作。任何会发送、发布、删除、购买、改账号的动作都必须停下并向我请求确认。
 7. 如果某条命令、某种 DSH 本地插件加载方式或某个依赖不可用，不要伪造通过；记录 BLOCKED，并给出准确原因和替代验证方式。
 8. 在执行命令前先确认当前工作目录。不要猜路径；如果找不到仓库，先搜索工作区或询问我。
+9. 禁止对真实设备执行 adb pair。除非我明确提供了手机的 IP、配对端口和配对码（或二维码文本），或者我明确授权执行电脑生成二维码后的真实扫描配对，并明确授权，否则配对相关测试只能在离线生成 / 解析 / mDNS 模拟层面进行，真实配对标为 BLOCKED。
+10. 测试配对时使用文档保留地址 192.0.2.10（TEST-NET-1），不要真的向它发起连接。电脑生成二维码的离线测试必须使用 TEST-NET-1 或模拟 mDNS，不得把测试二维码误用于真实配对。
+11. 报告中不要出现完整的配对码、二维码原文中的 P 字段值或 guid 之后可定位到设备的敏感串；需要引用时打码处理。
 
 【测试目标与报告要求】
 请验证以下层级，并在报告中分别给出 PASS / FAIL / BLOCKED：
@@ -109,6 +112,9 @@ node lib/cli.js status --data-dir TEST_DATA_DIR
 - npm run check 必须成功。
 - help、modules、status 都必须能运行。
 - 如果 npm install 修改了 lockfile，不要提交修改；报告中记录是否发生变更。
+- 无论这台机器有没有安装 adb，上面每条命令都必须正常退出，不得出现未捕获异常、unhandled rejection 或 ENOENT 崩溃。这一条是回归红线：曾经出现“没装 adb 时 opengui-plus modules 直接崩溃”的缺陷。
+- 没有 adb 时：status 的 capabilities.adb 应为 false、adb 字段为 null；设备相关方法返回 {ok:false,error:"…adb 不可用…"}，而不是让进程崩溃。请把这条判为 PASS（降级正确），不要因为没有 adb 就判 FAIL 或 BLOCKED。
+- 有 adb 时：capabilities.adb 应为 true，adb 字段为 adb 的路径，并在报告中记录 adb 版本（adb version）。
 
 【第 2 阶段：CLI 和注册表验证】
 使用独立 TEST_DATA_DIR 执行：
@@ -119,6 +125,10 @@ node lib/cli.js modules --data-dir TEST_DATA_DIR
 wlan-connection、snippet-library、action-template、scheduler、project-group、demo-recorder、workflow-marketplace、feedback-rl、device-pool、replay
 
 逐个检查 modules 输出中的方法列表与源码 methodSpecs 是否一致。不要只检查模块名称；报告里列出每个模块的方法数量和方法名。
+
+重点核对 wlan-connection：应包含当前源码 `methodSpecs` 中的全部方法，不能硬编码旧的方法总数。以下配对相关方法必须存在：
+pair、generatePairingQr、startQrPairing、pairWithCode、pairWithQr、pairAndConnect、mdnsServices、parsePairingQr、decodePairingQr、pairingGuide。
+如果报告引用方法数量，必须以实际 `modules` 输出和源码 `methodSpecs` 为准；缺少上述任意一个方法判 FAIL。
 
 执行：
 node lib/cli.js status --data-dir TEST_DATA_DIR
@@ -154,6 +164,95 @@ node lib/cli.js call wlan-connection.discover --data-dir TEST_DATA_DIR
 node lib/cli.js call wlan-connection.status --data-dir TEST_DATA_DIR
 
 不要自动执行 pair、enableTcpip 或 connect 到未知设备。若要测试，先展示设备 serial / host / 端口并请求我的确认。
+
+【第 3-A 阶段：二维码与配对能力离线测试（不需要真机，必须执行）】
+模块一新增了六位配对码配对和二维码配对。这两条链路的绝大多数逻辑（二维码解析、mDNS 发现、端口选择、错误提示、降级）都可以在没有手机的情况下验证。请把它们当作独立测试项，不要因为“没有设备”就整体标 BLOCKED。
+
+1. 配对操作指引：
+node lib/cli.js call wlan-connection.pairingGuide --data-dir TEST_DATA_DIR
+   确认返回包含 requires、entry、pairingCode、qrCode、qrFormat、ports、commands、troubleshooting 八个部分；ports 必须明确写出“配对端口 ≠ 连接端口”。
+
+2. 解析标准 AOSP 二维码（只有服务名，没有地址）：
+node lib/cli.js call wlan-connection.parsePairingQr --data-dir TEST_DATA_DIR --json '{"qr":"WIFI:T:ADB;S:studio-abc123._adb-tls-pairing._tcp;P:123456;;"}'
+   期望：serviceName=studio-abc123._adb-tls-pairing._tcp，pairingCode=123456，endpoint 不存在。
+
+3. 解析内联地址形式的二维码（部分 ROM 会这样生成）：
+node lib/cli.js call wlan-connection.parsePairingQr --data-dir TEST_DATA_DIR --json '{"qr":"WIFI:T:ADB;S:192.0.2.10:39443;P:123456;;"}'
+   期望：endpoint={host:"192.0.2.10",port:39443}。
+
+4. 容错输入（码里带空格）：
+node lib/cli.js call wlan-connection.parsePairingQr --data-dir TEST_DATA_DIR --json '{"qr":"WIFI:T:ADB;S:studio-abc;P:123 456;;"}'
+   期望：pairingCode=123456，空格被去掉。
+
+5. 以下三类错误输入必须各自返回明确的 {ok:false,error:"…"}，且错误信息要说出原因，不能只报“解析失败”：
+   - 不是配对二维码：https://example.com
+   - 缺少配对码字段：WIFI:T:ADB;S:studio-abc;;
+   - 配对码不是数字：WIFI:T:ADB;S:studio-abc;P:abcdef;;
+
+6. 没有 adb 时配对必须优雅失败，不得崩溃：
+node lib/cli.js call wlan-connection.pairWithCode --data-dir TEST_DATA_DIR --json '{"host":"192.0.2.10","port":39443,"code":"123456"}'
+   期望：返回 {ok:false,error}，错误信息说明 adb 不可用或配对失败；进程退出码可以是非 0，但绝不能抛出未捕获异常。
+   192.0.2.10 是文档保留地址（TEST-NET-1），不要真的向它发起连接。
+
+7. 配对码校验：分别用 "abcdef"、"12"、"12345678901234" 调用 pairWithCode，期望全部拒绝并说明原因，且不能把这些值传给 adb。再验证 "123 456" 与 "12-34-56" 会被规范化成 "123456"。
+
+8. 二维码图片解码的降级行为：
+node lib/cli.js call wlan-connection.decodePairingQr --data-dir TEST_DATA_DIR --json '{"image":"<任意不存在或不是二维码的图片路径>"}'
+   期望：返回明确错误（未找到解码器 zbarimg，或解码失败），绝不能凭空造出一个配对码。
+   注意：本项目没有内置二维码解码器，这是刻意的设计，不要因此判 FAIL；请在报告中注明“图片解码依赖外部 zbarimg，未安装时按设计降级”。
+
+9. mDNS 服务查看：
+node lib/cli.js call wlan-connection.mdnsServices --data-dir TEST_DATA_DIR
+   有 adb 但无设备在线：pairing 与 connect 均为空数组，并给出“请打开配对界面”的提示；
+   无 adb：返回空列表并说明 adb 不可用，不得崩溃。
+   有 adb 且有设备停在配对界面：报告 pairing / connect 两组的 name、type、host、port，并确认 pairing 端口与 connect 端口不同。
+
+10. 电脑生成二维码的离线测试（必须执行，不需要手机）：
+   a. 固定测试服务名和测试配对码调用：
+   node lib/cli.js call wlan-connection.generatePairingQr --data-dir TEST_DATA_DIR --json '{"serviceName":"studio-test","code":"123456","scale":4}'
+   b. 期望返回 `qrText`、`serviceName`、`pairingCode`、`version`、`mask`、`ascii`、`dataUrl`、`pngBase64`；`qrText` 必须为 `WIFI:T:ADB;S:studio-test;P:123456;;`。
+   c. 校验 `dataUrl` 以 `data:image/png;base64,` 开头，PNG Base64 非空且长度合理，ASCII 结果包含二维码黑色模块。
+   d. 将返回的 `qrText` 再传给 `parsePairingQr`，确认服务名和配对码可以无损解析。
+   e. 分别测试缺失 serviceName（允许实现自动生成合法服务名）、非法 code、过长 serviceName、含中文或特殊字符的 serviceName；必须明确拒绝或按文档安全规范化，不能生成不可解析的二维码。
+   f. 不要把测试二维码展示给真实手机，也不要因此执行真实 `adb pair`。
+
+11. 反向二维码配对编排的离线 / 模拟 mDNS 测试（必须执行）：
+   a. 由于 `startQrPairing` 会等待 mDNS，不能只因为没有真机就跳过。使用 FakeAdbRunner、测试替身或等价的本地模拟响应，让 `adb mdns services` 返回 `_adb-tls-pairing._tcp` 测试行，再让 `adb pair` 和可选 `adb connect` 返回成功。
+   b. 调用：
+   node lib/cli.js call wlan-connection.startQrPairing --data-dir TEST_DATA_DIR --json '{"serviceName":"studio-test","code":"123456","timeoutMs":1000,"pollMs":100,"save":false}'
+   c. 不能伪造“真实手机已连接”；报告必须写明这是模拟 mDNS / FakeAdbRunner 编排测试。
+   d. 另测超时：mDNS 始终为空时，期望返回 `{ok:false,error,qr}`，错误中说明等待扫描 / 未发现配对服务，并且不能执行 `adb pair`。
+   e. 验证 `connect:false` 时只完成配对、不执行 `adb connect`；验证 `connectPort` 明确传入时优先使用该端口。
+
+12. 单元测试覆盖：npm test 的用例中必须包含 pairing 相关用例（预期不少于 30 项，文件为 src/modules/wlan-connection/pairing.test.ts），记录实际通过数量。若该测试文件缺失或全被跳过，判 FAIL。
+
+【第 3-B 阶段：真实配对（必须我明确授权）】
+未经授权不要对任何设备执行 adb pair。电脑反向二维码流尤其必须先停下来确认，因为它会在屏幕上显示真实配对码。只有同时满足下面全部条件才可以做：
+- 我明确选择了要测试的手机；
+- 我明确给出了手机的 IP、配对端口、配对码，或亲口提供了二维码文本；如果使用反向流，我明确确认要把电脑生成的二维码展示给该手机扫描；
+- 我确认这台设备允许被配对，且当前动作是可逆的；
+- 你先把即将执行的 adb pair 目标（host:port，配对码打码）和后续 adb connect 目标展示给我并得到确认。
+
+真实反向流的安全顺序：
+1. 先生成二维码但不要展示给手机，向我展示服务名、目标设备、等待时长和将要使用的连接策略；
+2. 得到确认后，才在电脑屏幕或指定窗口显示二维码；
+3. 手机扫描后，只允许从 `adb mdns services` 找到匹配服务；不得把未知 mDNS 服务直接拿去配对；
+4. 在执行 `adb pair` 前再次向我展示脱敏后的 host:port 和打码配对码，并等待确认；
+5. 配对完成后，把配对端口和连接端口分开记录；`adb connect` 仍需单独确认；
+6. 任一步失败都如实记录，不得把“二维码生成成功”写成“手机配对成功”。
+
+授权后按顺序执行：
+1. node lib/cli.js call wlan-connection.mdnsServices
+2. 如果是手机显示二维码给电脑读取：调用 `pairWithCode` 或 `pairWithQr`，确认 paired=true，记录 guid（打码后写入报告）。
+3. 如果是电脑生成二维码给手机扫描：调用 `startQrPairing`，确认二维码已生成、匹配 mDNS 服务、paired=true；报告必须分别记录 qrGenerated、scanDetected、mdnsResolved、adbPair。
+4. 如需连接，调用 `pairAndConnect` 或让 `startQrPairing` 使用 connect=true，确认 paired=true 且 connected=true，记录 connectPortResolvedBy 是 mdns / input / default 中的哪一种。
+5. node lib/cli.js call wlan-connection.listDevices，确认设备已保存，且 pairingPort 记录的是配对端口、wifi.port 记录的是连接端口，两个值不同。
+5. 报告里必须把下面四件事分开写，不许混为一谈：
+   - 二维码 / 配对码解析通过
+   - adb pair 通过
+   - adb connect 通过
+   - 真实设备在线且可用
+6. 如果 paired=true 但 connected=false，这是正常的中间状态，必须如实记录并给出原因（配对端口 ≠ 连接端口是最常见原因），不能把它写成“配对功能不可用”。
 
 【第 4 阶段：模块二 snippet-library 独立测试】
 1. 首次 list，确认默认数据或空库行为符合实现。
@@ -361,6 +460,16 @@ JSON 至少包含：
   "existingOpenGuiPreserved": true,
   "dataDir": "...",
   "summary": {"pass": 0, "fail": 0, "blocked": 0},
+  "pairing": {
+    "offline": "PASS | FAIL",
+    "qrParsing": "PASS | FAIL",
+    "mdnsDiscovery": "PASS | FAIL | BLOCKED",
+    "noAdbDegradation": "PASS | FAIL",
+    "qrGeneration": "PASS | FAIL",
+    "reverseQrOrchestration": "PASS | FAIL | BLOCKED",
+    "realDevicePairing": "NOT RUN | BLOCKED | PASS | FAIL",
+    "realReverseQrPairing": "NOT RUN | BLOCKED | PASS | FAIL"
+  },
   "tests": [
     {"id":"AT-001","area":"build","status":"PASS","evidence":[],"note":"..."}
   ]
@@ -371,6 +480,7 @@ JSON 至少包含：
 - 总体结论
 - PASS / FAIL / BLOCKED 数量
 - 十个模块逐项结论
+- 模块一配对能力的逐项结论：二维码解析、二维码生成、反向二维码编排、mDNS 发现、配对码校验、无 adb 降级、是否做了真实正向配对、是否做了真实反向二维码配对
 - 是否验证了 DSH 工具注册
 - 是否验证了真实设备
 - 报告和证据路径
@@ -435,6 +545,8 @@ JSON 至少包含：
 - DSH 当前版本不支持本地 sibling plugin 加载。
 - 受限环境不能安装依赖，但源码结构已经检查。
 - 没有权限访问某个外部服务或设备。
+- **没有安装 zbarimg，无法做二维码图片解码**。这是设计内的外部依赖缺失，文本形式的二维码解析仍然必须验证。
+- **没有拿到用户的真实配对授权**，因此真机正向或反向配对没做。此时二维码生成、离线解析、模拟 mDNS 编排、配对码校验、无 adb 降级五项仍需全部执行。
 
 ### FAIL
 
@@ -447,6 +559,10 @@ JSON 至少包含：
 - 非法输入破坏已有数据。
 - HTML 回放生成但无法打开或内容缺失。
 - DSH 已成功加载插件，但工具注册数量为 0 或调用时报错。
+- 没有 adb 的环境下，CLI 因未捕获异常直接崩溃（这是明确的回归红线）。
+- 二维码解析把非配对内容判为成功，或伪造出配对码。
+- 配对成功但连接失败时，报告里把它写成了“配对成功”而不说明连接未成功。
+- 配对端口和连接端口被混用，导致 connect 一直失败却归因为“模块不可用”。
 
 ---
 

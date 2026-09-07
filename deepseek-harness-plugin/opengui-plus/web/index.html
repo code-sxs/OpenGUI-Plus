@@ -62,6 +62,7 @@
   .nav-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); flex: none; }
   .nav-item.healthy .dot { background: var(--green); }
   .nav-item.broken .dot { background: var(--amber); }
+  .nav-item .count { margin-left: auto; font-size: 11px; color: var(--muted); }
 
   /* ---------- main ---------- */
   main { display: flex; flex-direction: column; min-width: 0; }
@@ -115,6 +116,8 @@
   .field label { font-size: 12px; color: var(--muted); }
   .field input, .field select, .field textarea { width: 100%; }
   .field textarea { min-height: 74px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+  .field .row { display: flex; align-items: center; gap: 8px; }
+  .field .row input[type=checkbox] { width: auto; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
   pre.output {
@@ -145,6 +148,33 @@
     box-shadow: 0 10px 26px rgba(16,24,40,.28); font-size: 12.5px;
   }
   .toast div.err { background: #7a1414; }
+
+  /* ---------- method browser (generated from the live registry) ---------- */
+  .method-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .method-bar select { min-width: 260px; }
+  .method-summary { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+  .qr {
+    display: block; background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 10px; margin: 8px 0; image-rendering: pixelated; width: 220px; height: 220px;
+  }
+  pre.ascii {
+    margin: 8px 0; padding: 6px 8px; border-radius: 10px; background: #fff;
+    border: 1px solid var(--border); font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 6px; line-height: 6px; letter-spacing: 0; overflow: auto; white-space: pre;
+  }
+  .shots { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
+  .shots img {
+    width: 180px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface-soft); cursor: zoom-in;
+  }
+  .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px;
+    background: var(--surface-soft); border: 1px solid var(--border); color: var(--muted); margin-left: 6px;
+  }
+  .code-inline { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; color: var(--muted); }
+  details.raw { margin-top: 8px; }
+  details.raw summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+  .sect { font-size: 12px; color: var(--muted); margin: 18px 0 8px; letter-spacing: .4px; }
 </style>
 </head>
 <body>
@@ -173,24 +203,51 @@
   </main>
 </div>
 <div class="toast" id="toast"></div>
+<datalist id="known-ids"></datalist>
 
 <script>
 /* ============================================================
    OpenGUI-Plus console.
-   Every panel below is data-driven: `views` render JSON straight from a
-   module method, `actions` render a form that posts to the same method.
+
+   Two layers, both driven by the live registry:
+
+   1. CURATED — hand-written quick actions for the flows people run every
+      day (pairing, recording a template, switching project).
+   2. Method browser — built from `/api/modules`, which ships every module's
+      `methodSpecs`. That is what guarantees all ten modules and all of their
+      methods are reachable from here, including the ones no one wrote a card
+      for. Adding a method server-side is enough to make it appear.
+
+   Results are rendered by shape: tables for record arrays, an <img> for a
+   pairing QR, thumbnails for screenshots, a download button for an exported
+   replay, and the raw JSON is always one click away.
    ============================================================ */
 
-const PANELS = [
-  {
-    id: 'wlan-connection', title: '模块一 · 无线调试连接',
-    hint: 'USB / WiFi / 自动三种模式。WiFi 设备信息会记住，下次启动自动加载。',
+const CURATED = {
+  'wlan-connection': {
+    title: '模块一 · 无线调试连接',
+    hint: 'USB / WiFi / 自动三种模式。支持电脑生成二维码让手机扫的反向配对流；配对端口与连接端口是两个不同的端口。',
     views: [
       { label: '连接状态', target: 'wlan-connection.status' },
       { label: '已保存设备', target: 'wlan-connection.listDevices' },
       { label: '探测在线设备', target: 'wlan-connection.discover' },
+      { label: 'mDNS 服务', target: 'wlan-connection.mdnsServices' },
+      { label: '配对指引', target: 'wlan-connection.pairingGuide' },
     ],
     actions: [
+      { label: '生成配对二维码（手机扫）', target: 'wlan-connection.generatePairingQr',
+        fields: [ { name:'serviceName', label:'服务名（留空自动生成）' },
+                  { name:'code', label:'配对码（留空自动生成 6 位）' } ] },
+      { label: '反向配对：出码 → 等手机扫 → 配对 → 连接', target: 'wlan-connection.startQrPairing',
+        fields: [ { name:'serviceName', label:'服务名（留空自动生成）' },
+                  { name:'timeoutMs', label:'等待扫描超时（毫秒）', type:'number', value:60000 },
+                  { name:'connectPort', label:'连接端口（留空走 mDNS 解析）', type:'number' },
+                  { name:'connect', label:'配对后顺带连接', type:'checkbox', value:true } ] },
+      { label: '用二维码内容配对', target: 'wlan-connection.pairWithQr',
+        fields: [ { name:'qr', label:'二维码内容', type:'textarea', required:true,
+                    placeholder:'WIFI:T:ADB;S:studio-abc;P:123456;;' } ] },
+      { label: '解析二维码内容（不出网不出码）', target: 'wlan-connection.parsePairingQr',
+        fields: [ { name:'text', label:'二维码内容', type:'textarea', required:true } ] },
       { label: '设置连接模式', target: 'wlan-connection.setMode',
         fields: [ { name:'mode', label:'模式', type:'select', options:['auto','usb','wifi'], value:'auto' },
                   { name:'autoConnect', label:'启动时自动连接', type:'checkbox', value:true } ] },
@@ -202,15 +259,13 @@ const PANELS = [
       { label: '连接', target: 'wlan-connection.connect',
         fields: [ { name:'mode', label:'模式（留空用当前设置）', type:'select', options:['','auto','usb','wifi'], value:'' } ] },
       { label: '断开', target: 'wlan-connection.disconnect', fields: [] },
-      { label: '无线配对（Android 11+）', target: 'wlan-connection.pair',
-        fields: [ { name:'host', label:'配对 IP', required:true }, { name:'port', label:'配对端口', type:'number', required:true },
-                  { name:'code', label:'配对码', required:true } ] },
-      { label: '切换到 TCP/IP（需先插线）', target: 'wlan-connection.enableTcpip',
-        fields: [ { name:'serial', label:'序列号（可选）' }, { name:'port', label:'端口', type:'number', value:5555 } ] },
+      { label: '删除已保存设备', target: 'wlan-connection.removeDevice',
+        fields: [ { name:'id', label:'设备 id', required:true },
+                  { name:'confirm', label:'确认删除', type:'checkbox', value:true } ] },
     ],
   },
-  {
-    id: 'snippet-library', title: '模块二 · 快捷指令库',
+  'snippet-library': {
+    title: '模块二 · 快捷指令库',
     hint: '给常用指令起别名，输入别名即可补全，支持按标签分类与 JSON 导入导出。',
     views: [
       { label: '全部指令', target: 'snippet-library.list' },
@@ -224,6 +279,13 @@ const PANELS = [
                   { name:'command', label:'完整指令', placeholder:'截屏并返回当前界面', required:true },
                   { name:'tags', label:'标签（逗号分隔）', placeholder:'调试,UI检查' },
                   { name:'description', label:'说明' } ] },
+      // `save` doubles as the update entry point: pass `id` to rewrite an
+      // existing snippet. There is no separate `update` method.
+      { label: '修改指令', target: 'snippet-library.save',
+        fields: [ { name:'id', label:'指令 id（留空则按别名新建）' },
+                  { name:'alias', label:'别名', required:true },
+                  { name:'command', label:'新指令' },
+                  { name:'tags', label:'新标签（逗号分隔）' } ] },
       { label: '删除指令', target: 'snippet-library.remove', fields: [ { name:'id', label:'指令 id', required:true } ] },
       { label: '导出 JSON', target: 'snippet-library.exportJson', fields: [] },
       { label: '导入 JSON', target: 'snippet-library.importJson',
@@ -231,9 +293,9 @@ const PANELS = [
                   { name:'mode', label:'模式', type:'select', options:['merge','replace'], value:'merge' } ] },
     ],
   },
-  {
-    id: 'action-template', title: '模块三 · 动作模板录制',
-    hint: '把一串操作录成模板，之后一键执行；参数用 {{变量名}} 占位。',
+  'action-template': {
+    title: '模块三 · 动作模板录制',
+    hint: '把一串操作录成模板，之后一键执行；参数用 {{变量名}} 占位，执行时填真实值。',
     views: [
       { label: '模板列表', target: 'action-template.list' },
     ],
@@ -249,19 +311,20 @@ const PANELS = [
                   { name:'note', label:'备注' } ] },
       { label: '结束录制并保存', target: 'action-template.stopRecording',
         fields: [ { name:'recordingId', label:'录制会话 id', required:true } ] },
+      { label: '查看单个模板', target: 'action-template.get', fields: [ { name:'id', label:'模板 id', required:true } ] },
       { label: '执行模板', target: 'action-template.execute',
         fields: [ { name:'id', label:'模板 id', required:true },
                   { name:'variables', label:'变量（JSON）', type:'textarea', placeholder:'{"package":"com.android.settings"}' } ] },
       { label: '删除模板', target: 'action-template.remove', fields: [ { name:'id', label:'模板 id', required:true } ] },
     ],
   },
-  {
-    id: 'scheduler', title: '模块四 · 定时任务',
-    hint: '单次 / 每天 / 每周 / 自定义 Cron。可执行快捷指令、动作模板或完整流程。',
+  'scheduler': {
+    title: '模块四 · 定时任务',
+    hint: '单次 / 每天 / 每周 / 自定义 Cron。可执行快捷指令、动作模板或完整流程；创建时会校验目标是否存在。',
     views: [
       { label: '任务列表', target: 'scheduler.list' },
       { label: '即将执行', target: 'scheduler.nextRuns', input: { limit: 10 } },
-      { label: '执行日志', target: 'scheduler.runLogs' },
+      { label: '执行日志', target: 'scheduler.runs', input: { limit: 20 } },
     ],
     actions: [
       { label: '新建任务', target: 'scheduler.create',
@@ -277,8 +340,8 @@ const PANELS = [
       { label: '删除任务', target: 'scheduler.remove', fields: [ { name:'id', label:'任务 id', required:true } ] },
     ],
   },
-  {
-    id: 'project-group', title: '模块五 · 项目组管理',
+  'project-group': {
+    title: '模块五 · 项目组管理',
     hint: '一个 App 一套配置：设备、指令库、模板、定时任务。切换项目组即切换全套数据。',
     views: [
       { label: '项目组列表', target: 'project-group.list' },
@@ -298,9 +361,9 @@ const PANELS = [
       { label: '删除项目组', target: 'project-group.remove', fields: [ { name:'id', label:'项目组 id', required:true } ] },
     ],
   },
-  {
-    id: 'demo-recorder', title: '模块六 · 演示录制与教学',
-    hint: '手动做一遍，系统记录操作序列与页面状态，可转成模板；支持事后修正示范。',
+  'demo-recorder': {
+    title: '模块六 · 演示录制与教学',
+    hint: '手动做一遍，系统记录操作序列与页面状态，可转成动作模板；支持事后修正示范。',
     views: [
       { label: '录制列表', target: 'demo-recorder.listDemos' },
     ],
@@ -314,15 +377,20 @@ const PANELS = [
                   { name:'captureScreen', label:'同时抓页面状态', type:'checkbox', value:true },
                   { name:'note', label:'备注' } ] },
       { label: '结束录制', target: 'demo-recorder.stopDemo', fields: [ { name:'recordingId', label:'录制 id', required:true } ] },
+      { label: '查看单个录制', target: 'demo-recorder.getDemo', fields: [ { name:'id', label:'录制 id', required:true } ] },
       { label: '修正示范', target: 'demo-recorder.revise',
         fields: [ { name:'id', label:'录制 id', required:true },
                   { name:'steps', label:'修正后的步骤（JSON 数组）', type:'textarea', required:true, placeholder:'[{"action":"tap","params":{"x":1}}]' },
                   { name:'note', label:'修正说明' } ] },
-      { label: '转为动作模板', target: 'demo-recorder.toTemplate', fields: [ { name:'id', label:'录制 id', required:true } ] },
+      { label: '转为动作模板（真写入）', target: 'demo-recorder.toTemplate',
+        fields: [ { name:'id', label:'录制 id', required:true },
+                  { name:'name', label:'模板名（留空用录制名）' },
+                  { name:'description', label:'说明（可选覆盖）' } ] },
+      { label: '删除录制', target: 'demo-recorder.removeDemo', fields: [ { name:'id', label:'录制 id', required:true } ] },
     ],
   },
-  {
-    id: 'workflow-marketplace', title: '模块七 · 工作流模板市场',
+  'workflow-marketplace': {
+    title: '模块七 · 工作流模板市场',
     hint: '标准 .opengui-workflow 格式，分类浏览、一键安装、评分与导入导出。',
     views: [
       { label: '市场分类', target: 'workflow-marketplace.categories' },
@@ -335,6 +403,7 @@ const PANELS = [
                     options:['','social-operations','app-testing','auto-checkin','data-collection','other'], value:'' },
                   { name:'query', label:'关键词' },
                   { name:'sort', label:'排序', type:'select', options:['downloads','rating','recent'], value:'downloads' } ] },
+      { label: '查看模板详情', target: 'workflow-marketplace.detail', fields: [ { name:'id', label:'模板 id', required:true } ] },
       { label: '安装模板', target: 'workflow-marketplace.install', fields: [ { name:'id', label:'模板 id', required:true } ] },
       { label: '运行模板', target: 'workflow-marketplace.run',
         fields: [ { name:'id', label:'模板 id', required:true },
@@ -346,11 +415,12 @@ const PANELS = [
       { label: '导入 .opengui-workflow', target: 'workflow-marketplace.importWorkflow',
         fields: [ { name:'json', label:'模板 JSON', type:'textarea', required:true } ] },
       { label: '导出选中模板', target: 'workflow-marketplace.exportWorkflow', fields: [ { name:'id', label:'模板 id', required:true } ] },
+      { label: '卸载模板', target: 'workflow-marketplace.uninstall', fields: [ { name:'id', label:'模板 id', required:true } ] },
     ],
   },
-  {
-    id: 'feedback-rl', title: '模块八 · 反馈强化学习回路',
-    hint: '给每次执行打分，系统沉淀失败经验；下次遇到相似症状自动检索历史解法。',
+  'feedback-rl': {
+    title: '模块八 · 反馈强化学习回路',
+    hint: '给每次执行打分，系统沉淀失败经验；下次遇到相似症状自动检索历史解法（本地经验回路，不改动模型权重）。',
     views: [
       { label: '统计概览', target: 'feedback-rl.summary' },
       { label: '反馈记录', target: 'feedback-rl.listRecords' },
@@ -373,8 +443,8 @@ const PANELS = [
         fields: [ { name:'taskLabel', label:'任务标识', required:true } ] },
     ],
   },
-  {
-    id: 'device-pool', title: '模块九 · 多机协同与设备池',
+  'device-pool': {
+    title: '模块九 · 多机协同与设备池',
     hint: 'USB + WiFi 混合管理，标签分组，任务队列带优先级与并发上限，自动负载均衡。',
     views: [
       { label: '设备池概览', target: 'device-pool.status' },
@@ -399,10 +469,11 @@ const PANELS = [
       { label: '自动分配全部', target: 'device-pool.autoAssign', fields: [] },
       { label: '标记任务完成', target: 'device-pool.complete',
         fields: [ { name:'taskId', label:'任务 id', required:true }, { name:'ok', label:'是否成功', type:'checkbox', value:true } ] },
+      { label: '注销设备', target: 'device-pool.unregister', fields: [ { name:'id', label:'设备 id', required:true } ] },
     ],
   },
-  {
-    id: 'replay', title: '模块十 · 执行可视化回放',
+  'replay': {
+    title: '模块十 · 执行可视化回放',
     hint: '逐帧记录动作、AI 决策理由与异常恢复，结束后导出可分享的单文件 HTML 回放。',
     views: [
       { label: '回放列表', target: 'replay.listReplays' },
@@ -419,15 +490,21 @@ const PANELS = [
                   { name:'captureScreenshot', label:'抓截图', type:'checkbox', value:true } ] },
       { label: '结束录制', target: 'replay.stopRecording', fields: [ { name:'sessionId', label:'会话 id', required:true } ] },
       { label: '查看回放', target: 'replay.getReplay', fields: [ { name:'id', label:'会话 id', required:true } ] },
+      { label: '补充标注', target: 'replay.annotate',
+        fields: [ { name:'sessionId', label:'会话 id', required:true },
+                  { name:'frameId', label:'帧 id', required:true },
+                  { name:'decision', label:'决策理由' },
+                  { name:'anomaly', label:'异常（JSON）', type:'textarea' } ] },
       { label: '导出回放', target: 'replay.exportReplay',
         fields: [ { name:'id', label:'会话 id', required:true },
                   { name:'format', label:'格式', type:'select', options:['html','json'], value:'html' } ] },
       { label: '统计', target: 'replay.stats', fields: [ { name:'id', label:'会话 id', required:true } ] },
+      { label: '删除回放', target: 'replay.removeReplay', fields: [ { name:'id', label:'会话 id', required:true } ] },
     ],
   },
-];
+};
 
-let state = { panel: 'overview', modules: [], projects: [], currentProject: null, events: [] };
+let state = { panel: 'overview', modules: [], projects: [], currentProject: null, events: [], ids: [], brokenTargets: [] };
 
 /* ---------------- helpers ---------------- */
 
@@ -438,14 +515,31 @@ async function api(path, options = {}) {
   catch { return { ok: false, error: text.slice(0, 400) }; }
 }
 
+/** Recognise the module-level `Result` envelope without mistaking a report for one. */
+function isResultEnvelope(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (typeof value.ok !== 'boolean') return false;
+  return value.ok === false ? typeof value.error === 'string' : 'value' in value;
+}
+
 async function call(target, input = {}) {
   const result = await api('/api/call', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ target, input }),
   });
-  if (!result.ok) toast(`${target} 失败：${result.error}`, true);
-  return result;
+  // The registry wraps every dispatch as { ok: true, value: <module result> };
+  // a module-level failure therefore arrives as ok:true with an inner Result.
+  //
+  // The inner check has to be strict: several methods legitimately return a
+  // domain object with an `ok` field (an execution report is one). Only a
+  // genuine Result carries `value` on success or `error` on failure.
+  const candidate = result.value;
+  const inner = isResultEnvelope(candidate) ? candidate : null;
+  const payload = inner ?? result;
+  if (!payload.ok) toast(`${target} 失败：${payload.error ?? '未知错误'}`, true);
+  else harvestIds(payload.value);
+  return payload;
 }
 
 function toast(message, isError = false) {
@@ -467,19 +561,89 @@ function pretty(value) {
   return escapeHtml(JSON.stringify(value, null, 2));
 }
 
-/** Render a JSON payload; arrays of records become tables when they look tabular. */
-function renderResult(value) {
-  if (value === null || value === undefined) return '<p class="empty">无数据</p>';
-  if (Array.isArray(value)) return renderTable(value);
-  if (typeof value === 'object') {
-    const arrays = Object.entries(value).filter(([, v]) => Array.isArray(v));
-    if (arrays.length === 1 && arrays[0][1].length > 0) {
-      const [key, rows] = arrays[0];
-      const head = `<p class="hint">字段 ${escapeHtml(key)} 共 ${rows.length} 条</p>`;
-      return head + renderTable(rows);
+/** Collect ids/aliases seen in results so id inputs can autocomplete. */
+function harvestIds(value, depth = 0) {
+  if (value === null || value === undefined || depth > 4) return;
+  if (Array.isArray(value)) {
+    for (const row of value.slice(0, 50)) harvestIds(row, depth + 1);
+    return;
+  }
+  if (typeof value !== 'object') return;
+  for (const key of ['id', 'alias', 'recordingId', 'sessionId', 'taskId', 'templateId', 'deviceId', 'experienceId']) {
+    const found = value[key];
+    if (typeof found === 'string' && found.length > 0 && found.length < 64 && !state.ids.includes(found)) {
+      state.ids.push(found);
     }
   }
-  return `<pre class="output">${pretty(value)}</pre>`;
+  for (const nested of Object.values(value)) harvestIds(nested, depth + 1);
+}
+
+function syncKnownIds() {
+  const list = document.getElementById('known-ids');
+  if (!list) return;
+  list.innerHTML = state.ids.slice(-200).map(id => `<option value="${escapeHtml(id)}"></option>`).join('');
+}
+
+/* ---------------- result rendering ---------------- */
+
+function isImagePath(value) {
+  return typeof value === 'string' && /\.(png|jpe?g|webp|gif)$/i.test(value);
+}
+
+function qrOf(value) {
+  if (value === null || typeof value !== 'object') return null;
+  const candidates = [value, value.qr, value.pairing, value.result];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object') {
+      if (typeof candidate.dataUrl === 'string' && candidate.dataUrl.startsWith('data:image')) return candidate;
+      if (typeof candidate.pngBase64 === 'string' && candidate.pngBase64.length > 0) return candidate;
+    }
+  }
+  return null;
+}
+
+function renderQr(qr) {
+  const src = typeof qr.dataUrl === 'string' && qr.dataUrl.startsWith('data:image')
+    ? qr.dataUrl
+    : `data:image/png;base64,${qr.pngBase64}`;
+  let body = `<img class="qr" src="${src}" alt="配对二维码">`;
+  if (typeof qr.qrText === 'string') {
+    body += `<p class="hint"><code class="code-inline">${escapeHtml(qr.qrText)}</code></p>`;
+  }
+  if (typeof qr.pairingCode === 'string') {
+    body += `<p class="hint">配对码 <b>${escapeHtml(qr.pairingCode)}</b>（仅在手机上确认过之后才使用）</p>`;
+  }
+  if (typeof qr.ascii === 'string') {
+    body += `<pre class="ascii">${escapeHtml(qr.ascii)}</pre>`;
+  }
+  return body;
+}
+
+/** Screenshots are served from /files/<relative path under the data dir>. */
+function renderShots(value) {
+  const paths = [];
+  const walk = (node, depth) => {
+    if (node === null || node === undefined || depth > 4) return;
+    if (Array.isArray(node)) { for (const row of node) walk(row, depth + 1); return; }
+    if (typeof node !== 'object') return;
+    if (isImagePath(node.screenshotPath)) paths.push(node.screenshotPath);
+    if (isImagePath(node.path)) paths.push(node.path);
+    for (const nested of Object.values(node)) walk(nested, depth + 1);
+  };
+  walk(value, 0);
+  if (paths.length === 0) return '';
+  const unique = [...new Set(paths)].slice(0, 12);
+  return `<div class="shots">${unique.map(path =>
+    `<img src="/files/${encodeURI(path)}" alt="截图" loading="lazy" onclick="window.open(this.src,'_blank')">`).join('')}</div>`;
+}
+
+function renderDownload(value) {
+  if (value === null || typeof value !== 'object') return '';
+  const content = typeof value.content === 'string' ? value.content : '';
+  if (!content.startsWith('<')) return '';
+  const filename = typeof value.filename === 'string' ? value.filename : 'export.html';
+  return `<div class="row" style="margin:8px 0"><button class="btn primary" data-download="${escapeHtml(filename)}">下载 ${escapeHtml(filename)}</button>
+    <button class="btn" data-preview="${escapeHtml(filename)}">新窗口预览</button></div>`;
 }
 
 function renderTable(rows) {
@@ -500,18 +664,156 @@ function renderTable(rows) {
     + (rows.length > 60 ? `<p class="hint">仅显示前 60 条，共 ${rows.length} 条</p>` : '');
 }
 
+/** Render a module result by shape: QR, screenshots, download, tables, then raw JSON. */
+function renderResult(value) {
+  if (value === null || value === undefined) return '<p class="empty">无数据</p>';
+
+  if (typeof value === 'string') {
+    if (value.startsWith('data:image')) return `<img class="qr" src="${value}" alt="图片">`;
+    if (value.trimStart().startsWith('<')) {
+      return `<div class="row" style="margin:8px 0"><button class="btn primary" data-download="export.html">下载 HTML</button></div>`
+        + `<details class="raw"><summary>原始内容</summary><pre class="output">${escapeHtml(value.slice(0, 4000))}</pre></details>`;
+    }
+    return `<pre class="output">${escapeHtml(value)}</pre>`;
+  }
+
+  if (Array.isArray(value)) return renderTable(value);
+  if (typeof value !== 'object') return `<pre class="output">${escapeHtml(String(value))}</pre>`;
+
+  let html = '';
+  const qr = qrOf(value);
+  if (qr !== null) html += renderQr(qr);
+  html += renderShots(value);
+  html += renderDownload(value);
+
+  const arrays = Object.entries(value).filter(([, v]) => Array.isArray(v) && v.length > 0);
+  const tables = arrays.slice(0, 3);
+  for (const [key, rows] of tables) {
+    html += `<p class="sect">${escapeHtml(key)} · ${rows.length} 条</p>` + renderTable(rows);
+  }
+
+  const scalarOnly = tables.length === 0 && html.length === 0;
+  html += scalarOnly
+    ? `<pre class="output">${pretty(value)}</pre>`
+    : `<details class="raw"><summary>原始 JSON</summary><pre class="output">${pretty(value)}</pre></details>`;
+  return html;
+}
+
+function paintResult(container, result) {
+  container.innerHTML = result.ok
+    ? renderResult(result.value)
+    : `<pre class="output error">${escapeHtml(result.error ?? '未知错误')}</pre>`;
+  const download = container.querySelector('[data-download]');
+  if (download !== null) {
+    const content = result.value?.content ?? '';
+    download.addEventListener('click', () => {
+      const blob = new Blob([content], { type: 'text/html;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = download.dataset.download;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    });
+  }
+  const preview = container.querySelector('[data-preview]');
+  if (preview !== null) {
+    const content = result.value?.content ?? '';
+    preview.addEventListener('click', () => {
+      const blob = new Blob([content], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    });
+  }
+}
+
+/* ---------------- form building ---------------- */
+
+const JSON_FIELDS = new Set(['params','variables','payload','target','schedule','steps','data','context',
+  'anomaly','bundle','options','screenState','preconditions','parameters','weekdays','deviceIds','json','input','steps']);
+const CSV_FIELDS = new Set(['tags','groups']);
+const BOOL_FIELDS = new Set(['enabled','autoConnect','captureScreen','captureScreenshot','worked','ok',
+  'required','skipTargetCheck','force','withText','confirm','save','connect']);
+const NUM_FIELDS = new Set(['port','score','limit','priority','maxConcurrency','ms','duration','durationMs',
+  'x','y','x1','y1','x2','y2','timeoutMs','pollMs','revision','count','index']);
+const ID_KEYS = ['id','recordingId','sessionId','taskId','templateId','deviceId','experienceId','projectId','alias','from','to'];
+
+function fieldType(name, hint) {
+  if (BOOL_FIELDS.has(name)) return 'checkbox';
+  if (NUM_FIELDS.has(name)) return 'number';
+  if (CSV_FIELDS.has(name)) return 'text';
+  if (JSON_FIELDS.has(name)) return 'textarea';
+  if (typeof hint === 'string' && /(JSON|数组|对象|映射|\{)/.test(hint)) return 'textarea';
+  if (typeof hint === 'string' && /(是否|true|false)/.test(hint)) return 'checkbox';
+  if (/(true|false|是否)/.test(String(hint))) return 'checkbox';
+  return 'text';
+}
+
+function renderField(field, prefix) {
+  const { name, label, hint, type, options, value, required, placeholder } = field;
+  const id = `f-${prefix}-${name}`;
+  const list = ID_KEYS.includes(name) ? ' list="known-ids"' : '';
+  let control;
+  if (type === 'hidden') {
+    return `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value ?? '')}">`;
+  }
+  if (type === 'select') {
+    control = `<select id="${id}" name="${escapeHtml(name)}">${options.map(option =>
+      `<option value="${escapeHtml(option)}" ${String(option) === String(value ?? '') ? 'selected' : ''}>${escapeHtml(option || '（留空）')}</option>`).join('')}</select>`;
+  }
+  else if (type === 'textarea') {
+    control = `<textarea id="${id}" name="${escapeHtml(name)}" placeholder="${escapeHtml(placeholder ?? hint ?? '')}"></textarea>`;
+  }
+  else if (type === 'checkbox') {
+    control = `<div class="row"><input type="checkbox" id="${id}" name="${escapeHtml(name)}" ${value ? 'checked' : ''}></div>`;
+  }
+  else {
+    control = `<input type="${type === 'number' ? 'number' : 'text'}" id="${id}" name="${escapeHtml(name)}"${list}
+      placeholder="${escapeHtml(placeholder ?? hint ?? '')}" value="${escapeHtml(value ?? '')}">`;
+  }
+  return `<div class="field"><label for="${id}">${escapeHtml(label ?? name)}${required ? ' *' : ''}</label>${control}</div>`;
+}
+
+function collectInput(scope) {
+  const input = {};
+  scope.querySelectorAll('input, select, textarea').forEach((element) => {
+    if (!element.name) return;
+    if (element.type === 'checkbox') { input[element.name] = element.checked; return; }
+    const raw = element.value.trim();
+    if (raw.length === 0) return;
+    if (element.type === 'number') { input[element.name] = Number(raw); return; }
+    if ((element.tagName === 'TEXTAREA' || JSON_FIELDS.has(element.name)) && (raw.startsWith('{') || raw.startsWith('['))) {
+      try { input[element.name] = JSON.parse(raw); return; }
+      catch { /* leave it as a string; the module reports the error */ }
+    }
+    if (CSV_FIELDS.has(element.name)) {
+      input[element.name] = raw.split(/[,，]/).map(part => part.trim()).filter(Boolean);
+      return;
+    }
+    input[element.name] = raw;
+  });
+  return input;
+}
+
 /* ---------------- navigation ---------------- */
+
+function moduleOf(id) {
+  return state.modules.find(module => module.id === id);
+}
 
 function renderNav() {
   const nav = document.getElementById('nav');
   const overview = `<button class="nav-item ${state.panel === 'overview' ? 'active' : ''}" data-panel="overview">
       <span class="dot"></span>概览</button>`;
-  const items = PANELS.map((panel) => {
-    const status = state.modules.find(module => module.id === panel.id);
-    const healthy = status?.started ? 'healthy' : 'broken';
-    return `<button class="nav-item ${state.panel === panel.id ? 'active' : ''} ${healthy}" data-panel="${panel.id}">
-      <span class="dot"></span>${escapeHtml(panel.title)}</button>`;
-  }).join('');
+  // Sidebar mirrors the registry, so a module added server-side shows up here.
+  const items = state.modules
+    .filter(module => module.id !== '__host__')
+    .map((module) => {
+      const healthy = module.started ? 'healthy' : 'broken';
+      return `<button class="nav-item ${state.panel === module.id ? 'active' : ''} ${healthy}" data-panel="${escapeHtml(module.id)}">
+        <span class="dot"></span>${escapeHtml(module.name)}
+        <span class="count">${module.methods.length}</span></button>`;
+    }).join('');
   nav.innerHTML = `<div class="nav-group">总览</div>${overview}<div class="nav-group">功能模块</div>${items}`;
   nav.querySelectorAll('.nav-item').forEach((button) => {
     button.addEventListener('click', () => { state.panel = button.dataset.panel; render(); });
@@ -521,13 +823,18 @@ function renderNav() {
 /* ---------------- panels ---------------- */
 
 function renderOverview() {
-  const cards = state.modules.map((module) => {
+  const totalMethods = state.modules.reduce((sum, module) => sum + (module.methods?.length ?? 0), 0);
+  const cards = state.modules.filter(module => module.id !== '__host__').map((module) => {
     const dot = module.started ? 'on' : 'off';
+    const methods = module.methods.length;
     return `<div class="card">
       <h3><span class="status-dot ${dot}"></span>${escapeHtml(module.name)}
-        <span class="spacer"></span><span class="tag">${escapeHtml(module.id)}</span></h3>
+        <span class="spacer"></span><span class="tag">${methods} 方法</span></h3>
       <p class="hint">${escapeHtml(module.summary)}</p>
-      <p class="muted" style="font-size:12px">${module.methods.length} 个方法 · ${escapeHtml(module.health?.detail ?? '')}</p>
+      <p class="muted" style="font-size:12px">${escapeHtml(module.health?.detail ?? '')}</p>
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary" data-goto="${escapeHtml(module.id)}">进入模块</button>
+      </div>
     </div>`;
   }).join('');
 
@@ -537,11 +844,18 @@ function renderOverview() {
       <b>${escapeHtml(event.source ?? '')}</b> ${escapeHtml(event.type ?? '')}</div>`;
   }).join('') || '<p class="empty">暂无事件</p>';
 
+  const broken = state.brokenTargets.length > 0
+    ? `<p class="hint" style="color:#b45309">⚠ 有 ${state.brokenTargets.length} 个卡片方法在注册表中不存在：
+        <code>${escapeHtml(state.brokenTargets.join('、'))}</code><br>请用下方“方法浏览器”调用，或修正前端卡片。</p>`
+    : '';
+
   return `<div class="grid">
       <div class="card">
         <h3>运行状态</h3>
-        <p class="hint">共 ${state.modules.length} 个模块，其中 ${state.modules.filter(m => m.started).length} 个已启动。</p>
+        <p class="hint">共 ${state.modules.filter(m => m.id !== '__host__').length} 个模块、${totalMethods} 个方法，
+          其中 ${state.modules.filter(m => m.started).length} 个已启动。</p>
         <p class="muted" style="font-size:12px">当前项目组：<b>${escapeHtml(state.currentProject ?? 'default')}</b></p>
+        ${broken}
         <div class="row" style="margin-top:10px">
           <button class="btn" id="ov-refresh">刷新</button>
           <button class="btn" id="ov-events">拉取最近事件</button>
@@ -556,128 +870,163 @@ function renderOverview() {
     <div class="grid" style="margin-top:16px">${cards}</div>`;
 }
 
-function renderPanel(panel) {
-  const views = panel.views.map((view, index) => `
-    <div class="card" data-view="${panel.id}-${index}">
+function renderModulePanel(id) {
+  const registry = moduleOf(id);
+  const curated = CURATED[id] ?? { title: registry?.name ?? id, hint: registry?.summary ?? '', views: [], actions: [] };
+
+  const views = (curated.views ?? []).map((view, index) => `
+    <div class="card" data-view="${index}">
       <h3>${escapeHtml(view.label)}<span class="spacer"></span>
-        <button class="btn ghost" data-refresh="${panel.id}-${index}">刷新</button></h3>
+        <button class="btn ghost" data-refresh="${index}">刷新</button></h3>
       <p class="hint"><code>${escapeHtml(view.target)}</code></p>
       <div class="out"><p class="empty">点击“刷新”加载</p></div>
     </div>`).join('');
 
-  const actions = panel.actions.map((action, index) => {
-    const fields = (action.fields ?? []).map((field) => {
-      if (field.type === 'hidden') return `<input type="hidden" name="${field.name}" value="${escapeHtml(field.value ?? '')}">`;
-      const id = `f-${panel.id}-${index}-${field.name}`;
-      let control;
-      if (field.type === 'select') {
-        control = `<select id="${id}" name="${field.name}">${field.options.map(option =>
-          `<option value="${escapeHtml(option)}" ${String(option) === String(field.value ?? '') ? 'selected' : ''}>${escapeHtml(option || '（留空）')}</option>`).join('')}</select>`;
-      } else if (field.type === 'textarea') {
-        control = `<textarea id="${id}" name="${field.name}" placeholder="${escapeHtml(field.placeholder ?? '')}"></textarea>`;
-      } else if (field.type === 'checkbox') {
-        control = `<input type="checkbox" id="${id}" name="${field.name}" ${field.value ? 'checked' : ''}>`;
-      } else {
-        control = `<input type="${field.type === 'number' ? 'number' : 'text'}" id="${id}" name="${field.name}"
-          placeholder="${escapeHtml(field.placeholder ?? '')}" value="${escapeHtml(field.value ?? '')}">`;
-      }
-      return `<div class="field"><label for="${id}">${escapeHtml(field.label ?? field.name)}${field.required ? ' *' : ''}</label>${control}</div>`;
-    }).join('');
-
-    return `<div class="card" data-action="${panel.id}-${index}">
+  const actions = (curated.actions ?? []).map((action, index) => `
+    <div class="card" data-action="${index}">
       <h3>${escapeHtml(action.label)}</h3>
       <p class="hint"><code>${escapeHtml(action.target)}</code></p>
       <form>
-        <div class="fields">${fields}</div>
+        <div class="fields">${(action.fields ?? []).map(field => renderField(field, `a${index}`)).join('')}</div>
         <div class="row">
           <button type="submit" class="btn primary">执行</button>
-          <button type="button" class="btn ghost" data-clear="${panel.id}-${index}">清空</button>
+          <button type="button" class="btn ghost" data-clear="${index}">清空</button>
         </div>
       </form>
       <div class="out"></div>
-    </div>`;
-  }).join('');
+    </div>`).join('');
 
-  return `<p class="hint" style="margin-bottom:14px">${escapeHtml(panel.hint)}</p>
-    <div class="grid">${views}</div>
-    <div class="grid" style="margin-top:16px">${actions}</div>`;
+  const specs = registry?.methodSpecs ?? [];
+  const options = specs.map(spec =>
+    `<option value="${escapeHtml(spec.name)}">${escapeHtml(spec.name)} — ${escapeHtml(spec.summary)}</option>`).join('');
+
+  const browser = `<div class="card" id="method-browser">
+      <h3>全部方法<span class="spacer"></span><span class="badge">${specs.length} 个</span></h3>
+      <p class="hint">方法列表直接来自服务端注册表，新增方法无需改动前端即可调用。</p>
+      <div class="method-bar">
+        <select id="method-select">${options || '<option>（未获取到方法清单）</option>'}</select>
+        <button class="btn primary" id="method-run">执行</button>
+      </div>
+      <p class="method-summary" id="method-summary"></p>
+      <form id="method-form"><div class="fields" id="method-fields"></div></form>
+      <div class="out" id="method-out"></div>
+    </div>`;
+
+  return `<p class="hint" style="margin-bottom:14px">${escapeHtml(curated.hint)}</p>
+    ${browser}
+    ${views.length > 0 ? `<p class="sect">常用数据</p><div class="grid">${views}</div>` : ''}
+    ${actions.length > 0 ? `<p class="sect">常用操作</p><div class="grid">${actions}</div>` : ''}`;
 }
 
 function render() {
   renderNav();
-  const panel = PANELS.find(candidate => candidate.id === state.panel);
-  document.getElementById('panel-title').textContent = panel ? panel.title : '概览';
-  document.getElementById('content').innerHTML = panel ? renderPanel(panel) : renderOverview();
-  if (panel) bindPanel(panel);
+  const module = moduleOf(state.panel);
+  document.getElementById('panel-title').textContent = module
+    ? `${module.name} · ${module.id}`
+    : '概览';
+  const content = document.getElementById('content');
+  content.innerHTML = module ? renderModulePanel(state.panel) : renderOverview();
+  syncKnownIds();
+  if (module) bindModulePanel(state.panel);
   else bindOverview();
 }
 
 /* ---------------- binding ---------------- */
 
-function collectInput(scope) {
-  const input = {};
-  scope.querySelectorAll('input, select, textarea').forEach((element) => {
-    if (!element.name) return;
-    if (element.type === 'checkbox') { input[element.name] = element.checked; return; }
-    const raw = element.value.trim();
-    if (raw.length === 0) return;
-    if (element.type === 'number') { input[element.name] = Number(raw); return; }
-    // JSON fields let you pass structured arguments straight through.
-    if ((element.tagName === 'TEXTAREA' || ['params','variables','payload','target','schedule','anomaly','steps','data','context']
-        .includes(element.name)) && (raw.startsWith('{') || raw.startsWith('['))) {
-      try { input[element.name] = JSON.parse(raw); return; }
-      catch { /* fall through to string; the module will report the error */ }
-    }
-    if (element.name === 'tags' || element.name === 'groups') {
-      input[element.name] = raw.split(/[,，]/).map(part => part.trim()).filter(Boolean);
-      return;
-    }
-    input[element.name] = raw;
-  });
-  return input;
-}
+function bindModulePanel(id) {
+  const curated = CURATED[id] ?? { views: [], actions: [] };
 
-function bindPanel(panel) {
-  panel.views.forEach((view, index) => {
-    const card = document.querySelector(`[data-view="${panel.id}-${index}"]`);
+  (curated.views ?? []).forEach((view, index) => {
+    const card = document.querySelector(`[data-view="${index}"]`);
+    if (card === null) return;
     const out = card.querySelector('.out');
     const load = async () => {
       out.innerHTML = '<p class="empty">加载中…</p>';
       const result = await call(view.target, view.input ?? {});
-      out.innerHTML = result.ok
-        ? renderResult(result.value)
-        : `<pre class="output error">${escapeHtml(result.error)}</pre>`;
+      paintResult(out, result);
+      syncKnownIds();
       if (view.target === 'wlan-connection.status') paintConnection(result.value);
     };
     card.querySelector('[data-refresh]').addEventListener('click', load);
     load();
   });
 
-  panel.actions.forEach((action, index) => {
-    const card = document.querySelector(`[data-action="${panel.id}-${index}"]`);
+  (curated.actions ?? []).forEach((action, index) => {
+    const card = document.querySelector(`[data-action="${index}"]`);
+    if (card === null) return;
     const out = card.querySelector('.out');
     card.querySelector('form').addEventListener('submit', async (event) => {
       event.preventDefault();
       const input = collectInput(card);
       out.innerHTML = '<p class="empty">执行中…</p>';
       const result = await call(action.target, input);
-      out.innerHTML = result.ok
-        ? renderResult(result.value)
-        : `<pre class="output error">${escapeHtml(result.error)}</pre>`;
-      if (action.target === 'project-group.create' || action.target === 'project-group.switch'
-          || action.target === 'project-group.remove' || action.target === 'project-group.import') {
-        await loadProjects();
-      }
-      if (action.target === 'wlan-connection.connect' || action.target === 'wlan-connection.status') {
-        const status = await call('wlan-connection.status');
-        if (status.ok) paintConnection(status.value);
-      }
+      paintResult(out, result);
+      syncKnownIds();
+      if (result.ok) await afterMutation(action.target, result);
     });
     card.querySelector('[data-clear]').addEventListener('click', () => {
       card.querySelectorAll('input[type=text], input[type=number], textarea').forEach(el => { el.value = ''; });
       out.innerHTML = '';
     });
   });
+
+  bindMethodBrowser(id);
+}
+
+/** Build a form for whatever method is selected, from its server-side spec. */
+function bindMethodBrowser(id) {
+  const registry = moduleOf(id);
+  const select = document.getElementById('method-select');
+  const summary = document.getElementById('method-summary');
+  const fieldsHost = document.getElementById('method-fields');
+  const form = document.getElementById('method-form');
+  const out = document.getElementById('method-out');
+  if (select === null || registry === undefined) return;
+
+  const paint = () => {
+    const name = select.value;
+    const spec = (registry.methodSpecs ?? []).find(candidate => candidate.name === name);
+    summary.textContent = spec?.summary ?? '';
+    const hints = spec?.input ?? {};
+    const fields = Object.entries(hints).map(([fieldName, hint]) => ({
+      name: fieldName,
+      label: fieldName,
+      hint: typeof hint === 'string' ? hint : '',
+      type: fieldType(fieldName, hint),
+    }));
+    fieldsHost.innerHTML = fields.length === 0
+      ? '<p class="empty">该方法无需参数</p>'
+      : fields.map(field => renderField(field, 'm')).join('');
+  };
+
+  select.addEventListener('change', paint);
+  paint();
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const target = `${id}.${select.value}`;
+    const input = collectInput(fieldsHost);
+    out.innerHTML = '<p class="empty">执行中…</p>';
+    const result = await call(target, input);
+    paintResult(out, result);
+    syncKnownIds();
+    if (result.ok) await afterMutation(target, result);
+  });
+  document.getElementById('method-run')?.addEventListener('click', () => {
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+  });
+}
+
+/** Refresh the bits of chrome that a mutation invalidates. */
+async function afterMutation(target, result) {
+  if (target.startsWith('project-group.')) {
+    await loadProjects();
+    return;
+  }
+  if (target.startsWith('wlan-connection.')) {
+    const status = await call('wlan-connection.status');
+    if (status.ok) paintConnection(status.value);
+  }
 }
 
 function bindOverview() {
@@ -685,6 +1034,9 @@ function bindOverview() {
   document.getElementById('ov-events')?.addEventListener('click', async () => {
     const result = await api('/api/events/recent');
     if (result.events) { state.events = result.events; render(); }
+  });
+  document.querySelectorAll('[data-goto]').forEach((button) => {
+    button.addEventListener('click', () => { state.panel = button.dataset.goto; render(); });
   });
 }
 
@@ -703,13 +1055,41 @@ async function loadProjects() {
   const result = await call('project-group.list');
   const rows = Array.isArray(result.value)
     ? result.value
-    : (result.value && Array.isArray(result.value.projects) ? result.value.projects : []);
-  state.projects = rows;
+    : (result.value?.groups ?? result.value?.projects ?? []);
+  state.projects = Array.isArray(rows) ? rows : [];
   const select = document.getElementById('project-select');
   const current = state.currentProject;
-  select.innerHTML = rows.map(row =>
+  select.innerHTML = state.projects.map(row =>
     `<option value="${escapeHtml(row.id)}" ${row.id === current ? 'selected' : ''}>${escapeHtml(row.name)}</option>`).join('')
     || '<option value="default">default</option>';
+}
+
+/**
+ * Cross-check every hand-written CURATED target against the live registry.
+ *
+ * The method browser builds its list from the registry so it can never go
+ * stale, but the curated cards are literal strings — a rename on the server
+ * would silently turn into an HTTP 400. Surfacing the mismatch in the console
+ * (and as a badge) keeps that class of bug visible instead of invisible.
+ */
+function auditCuratedTargets() {
+  const known = new Set();
+  for (const module of state.modules) {
+    for (const spec of module.methodSpecs ?? []) known.add(`${module.id}.${spec.name}`);
+  }
+  const missing = new Set();
+  const visit = (items) => {
+    for (const item of items ?? []) {
+      if (typeof item?.target === 'string' && !known.has(item.target)) missing.add(item.target);
+      visit(item.views);
+      visit(item.actions);
+    }
+  };
+  for (const entry of Object.values(CURATED)) visit([entry]);
+  if (missing.size > 0) {
+    console.warn('[opengui-plus] 前端卡片引用了不存在的方法：', [...missing].join(', '));
+  }
+  return [...missing];
 }
 
 async function bootstrap() {
@@ -717,6 +1097,7 @@ async function bootstrap() {
   if (status.modules) state.modules = status.modules;
   if (status.activeProjectId) state.currentProject = status.activeProjectId;
   if (status.recentEvents) state.events = status.recentEvents;
+  state.brokenTargets = auditCuratedTargets();
   await loadProjects();
   const connection = await call('wlan-connection.status');
   if (connection.ok) paintConnection(connection.value);

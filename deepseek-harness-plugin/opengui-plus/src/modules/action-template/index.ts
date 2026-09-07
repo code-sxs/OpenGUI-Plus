@@ -16,6 +16,7 @@
  */
 
 import type { AdbRunner } from '../../core/adb-runner.js'
+import { callModule } from '../../core/call.js'
 import { PLUS_EVENTS } from '../../core/events.js'
 import { createId } from '../../core/id.js'
 import { defineModule, type ModuleContext, type PlusModule } from '../../core/module.js'
@@ -209,11 +210,16 @@ export function createActionTemplateModule(): PlusModule {
     return context?.adb ?? null
   }
 
-  /** Fill `{{variable}}` placeholders in every string parameter of a step. */
-  function resolveParams(step: ActionStep, variables: Readonly<Record<string, string>>): Record<string, string> {
-    const out: Record<string, string> = {}
+  /**
+   * Fill `{{variable}}` placeholders in every string parameter of a step.
+   *
+   * Numbers are passed through untouched so `tap`/`swipe` keep numeric
+   * coordinates as numbers rather than round-tripping them through a string.
+   */
+  function resolveParams(step: ActionStep, variables: Readonly<Record<string, string>>): StepParams {
+    const out: Record<string, string | number> = {}
     for (const [key, value] of Object.entries(step.params)) {
-      out[key] = typeof value === 'string' ? substitute(value, variables) : String(value)
+      out[key] = typeof value === 'string' ? substitute(value, variables) : value
     }
     return out
   }
@@ -225,26 +231,26 @@ export function createActionTemplateModule(): PlusModule {
     if (step.type === 'connect' || step.type === 'disconnect') {
       if (context === null) return { stepId: step.id, type: step.type, ok: false, detail: '模块未启动', skipped: true }
       const target = `wlan-connection.${step.type}`
-      const result = await context.call(target, {})
+      const result = await callModule(context, target, {})
       return result.ok
         ? { stepId: step.id, type: step.type, ok: true, detail: `${target} 已执行` }
         : { stepId: step.id, type: step.type, ok: false, detail: result.error }
     }
 
     if (step.type === 'snippet') {
-      const alias = params.alias ?? params.name
-      if (alias === undefined || alias.length === 0) {
+      const alias = param(params, 'alias', 'name')
+      if (alias === undefined || String(alias).length === 0) {
         return { stepId: step.id, type: step.type, ok: false, detail: 'snippet 步骤缺少 alias' }
       }
       if (context === null) return { stepId: step.id, type: step.type, ok: false, detail: '模块未启动', skipped: true }
-      const result = await context.call('snippet-library.resolve', { alias })
+      const result = await callModule(context, 'snippet-library.resolve', { alias: String(alias) })
       return result.ok
-        ? { stepId: step.id, type: step.type, ok: true, detail: `已解析别名 ${alias}` }
+        ? { stepId: step.id, type: step.type, ok: true, detail: `已解析别名 ${String(alias)}` }
         : { stepId: step.id, type: step.type, ok: false, detail: result.error }
     }
 
     if (step.type === 'wait') {
-      const ms = toInt(param(step.params, 'ms', 'duration', 'durationMs')) ?? DEFAULT_WAIT_MS
+      const ms = toInt(param(params, 'ms', 'duration', 'durationMs')) ?? DEFAULT_WAIT_MS
       const clamped = Math.min(Math.max(ms, 0), MAX_WAIT_MS)
       await new Promise(resolve => setTimeout(resolve, clamped))
       return { stepId: step.id, type: step.type, ok: true, detail: `等待 ${clamped}ms` }
@@ -257,30 +263,30 @@ export function createActionTemplateModule(): PlusModule {
 
     switch (step.type) {
       case 'launch': {
-        const packageName = param(step.params, 'package', 'packageName', 'app')
+        const packageName = param(params, 'package', 'packageName', 'app')
         if (packageName === undefined) return { stepId: step.id, type: step.type, ok: false, detail: 'launch 步骤缺少 package' }
         const result = await runner.run(['shell', 'monkey', '-p', String(packageName), '-c', 'android.intent.category.LAUNCHER', '1'])
         return { stepId: step.id, type: step.type, ok: result.code === 0, detail: result.stdout.trim() || `已启动 ${String(packageName)}` }
       }
       case 'shell': {
-        const command = param(step.params, 'command', 'cmd')
+        const command = param(params, 'command', 'cmd')
         if (command === undefined) return { stepId: step.id, type: step.type, ok: false, detail: 'shell 步骤缺少 command' }
         const result = await runner.run(['shell', ...String(command).split(/\s+/).filter(part => part.length > 0)])
         return { stepId: step.id, type: step.type, ok: result.code === 0, detail: result.stdout.trim() || result.stderr.trim() || `已执行 ${String(command)}` }
       }
       case 'tap': {
-        const x = toInt(param(step.params, 'x'))
-        const y = toInt(param(step.params, 'y'))
+        const x = toInt(param(params, 'x'))
+        const y = toInt(param(params, 'y'))
         if (x === undefined || y === undefined) return { stepId: step.id, type: step.type, ok: false, detail: 'tap 步骤需要 x 和 y' }
         await runner.run(['shell', 'input', 'tap', String(x), String(y)])
         return { stepId: step.id, type: step.type, ok: true, detail: `点击 (${x}, ${y})` }
       }
       case 'swipe': {
-        const x1 = toInt(param(step.params, 'x1', 'fromX'))
-        const y1 = toInt(param(step.params, 'y1', 'fromY'))
-        const x2 = toInt(param(step.params, 'x2', 'toX'))
-        const y2 = toInt(param(step.params, 'y2', 'toY'))
-        const duration = toInt(param(step.params, 'duration', 'durationMs')) ?? 300
+        const x1 = toInt(param(params, 'x1', 'fromX'))
+        const y1 = toInt(param(params, 'y1', 'fromY'))
+        const x2 = toInt(param(params, 'x2', 'toX'))
+        const y2 = toInt(param(params, 'y2', 'toY'))
+        const duration = toInt(param(params, 'duration', 'durationMs')) ?? 300
         if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) {
           return { stepId: step.id, type: step.type, ok: false, detail: 'swipe 步骤需要 x1, y1, x2, y2' }
         }
@@ -288,7 +294,7 @@ export function createActionTemplateModule(): PlusModule {
         return { stepId: step.id, type: step.type, ok: true, detail: `滑动 (${x1},${y1}) → (${x2},${y2}) ${duration}ms` }
       }
       case 'input': {
-        const text = param(step.params, 'text', 'value')
+        const text = param(params, 'text', 'value')
         if (text === undefined) return { stepId: step.id, type: step.type, ok: false, detail: 'input 步骤缺少 text' }
         const escaped = String(text).replace(/\s/g, '%s')
         await runner.run(['shell', 'input', 'text', escaped])

@@ -69,6 +69,34 @@ function isJsonRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Decide which ADB runner the host runs with.
+ *
+ * An injected runner is used as-is (tests). Otherwise `adb version` is probed
+ * once: without platform-tools we return `null` so every module reports
+ * "needs adb" through the normal `Result` channel instead of blowing up the
+ * process on the first device call.
+ */
+async function resolveAdbRunner(options: PlusHostOptions): Promise<AdbRunner | null> {
+  if (options.adb !== undefined) return options.adb
+  if (options.capabilities?.adb === false) return null
+  const runner = createAdbRunner()
+  if (typeof runner.probe !== 'function') return runner
+  const logger = options.logger ?? silentLogger()
+  try {
+    const available = await runner.probe()
+    if (available === false) {
+      logger.warn(`未检测到可用的 adb（${runner.binary}），已降级为纯控制台模式；设备相关功能会返回明确错误`)
+      return null
+    }
+    return runner
+  }
+  catch (error) {
+    logger.warn(`adb 探测失败（${error instanceof Error ? error.message : String(error)}），已降级为纯控制台模式`)
+    return null
+  }
+}
+
+/**
  * Owns the module registry and project lifecycle.
  *
  * Use {@link PlusHost.create} rather than the constructor: startup loads the
@@ -86,12 +114,12 @@ export class PlusHost {
   private currentProjectId: string
   private started = false
 
-  private constructor(options: PlusHostOptions) {
+  private constructor(options: PlusHostOptions, adbRunner: AdbRunner | null) {
     this.dataDir = options.dataDir
     this.store = new PlusStore(options.dataDir)
     this.events = new EventBus()
     this.logger = options.logger ?? silentLogger()
-    this.adbRunner = options.adb === undefined ? createAdbRunner() : options.adb
+    this.adbRunner = adbRunner
     this.capabilities = {
       adb: this.adbRunner !== null && (options.capabilities?.adb ?? true),
       dsh: options.capabilities?.dsh ?? false,
@@ -101,9 +129,15 @@ export class PlusHost {
     this.registry = new ModuleRegistry()
   }
 
-  /** Build a host, register the ten modules, and start them. */
+  /**
+   * Build a host, register the ten modules, and start them.
+   *
+   * With no injected runner we probe `adb version` first: on a machine without
+   * platform-tools every module degrades to its console behaviour instead of
+   * each call failing with an unhandled spawn error.
+   */
   static async create(options: PlusHostOptions): Promise<PlusHost> {
-    const host = new PlusHost(options)
+    const host = new PlusHost(options, await resolveAdbRunner(options))
     for (const module of defaultModules()) host.registry.register(module)
     host.registry.register(host.createInternalModule())
     await host.start()
@@ -123,7 +157,9 @@ export class PlusHost {
       if (!isJsonRecord(payload)) return
       const projectId = payload.projectId
       if (typeof projectId !== 'string' || projectId === this.currentProjectId) return
-      void this.applyProjectSwitch(projectId)
+      void this.applyProjectSwitch(projectId).catch((error) => {
+        this.logger.warn(`项目组切换失败: ${error instanceof Error ? error.message : String(error)}`)
+      })
     })
     await this.drainPendingCleanup()
     this.started = true
@@ -223,6 +259,21 @@ export class PlusHost {
       version: '0.1.0',
       summary: '项目组的复制、导出与导入（内部模块，供 project-group 调用）',
       methods: {
+        /**
+         * Switch the active project and re-seat every module, awaited.
+         *
+         * `project-group.switch` calls this instead of publishing
+         * `projectSwitched` and hoping: two writers racing on
+         * `global/current-project.json` (the module and the host's event
+         * listener) is what produced the Windows `EPERM` rename failure.
+         */
+        async switchProject(input) {
+          const id = typeof input.id === 'string' ? input.id : undefined
+          if (id === undefined) return fail('switchProject needs "id"')
+          const result = await host.switchProject(id)
+          return result.ok ? { projectId: result.value, switched: true } : fail(result.error)
+        },
+
         async copyProject(input) {
           const from = typeof input.from === 'string' ? input.from : undefined
           const to = typeof input.to === 'string' ? input.to : undefined
@@ -286,6 +337,7 @@ export class PlusHost {
         },
       },
       methodSpecs: [
+        { name: 'switchProject', summary: '切换当前项目组并重设各模块数据（由 project-group 调用）', input: { id: '项目组 id' } },
         { name: 'copyProject', summary: '复制项目数据目录', input: { from: '源项目 id', to: '目标项目 id' } },
         { name: 'exportProject', summary: '导出项目为可分享数据包', input: { id: '项目 id' } },
         { name: 'importProject', summary: '导入项目包', input: { payload: '项目包对象', name: '可选新名称' } },

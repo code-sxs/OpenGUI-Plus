@@ -20,7 +20,12 @@ export interface RegistryStatus {
   readonly summary: string
   readonly started: boolean
   readonly methods: readonly string[]
-  readonly methodSpecs: readonly { readonly name: string, readonly summary: string }[]
+  readonly methodSpecs: readonly {
+    readonly name: string
+    readonly summary: string
+    /** Field hints, forwarded so the console can render a form for any method. */
+    readonly input?: Readonly<Record<string, string>>
+  }[]
   readonly health: ModuleHealth
 }
 
@@ -107,6 +112,7 @@ export class ModuleRegistry {
         methodSpecs: (module.methodSpecs ?? []).map(spec => ({
           name: spec.name,
           summary: spec.summary,
+          ...(spec.input === undefined ? {} : { input: spec.input }),
         })),
         health: started ? await module.health() : { healthy: false, detail: 'not started' },
       })

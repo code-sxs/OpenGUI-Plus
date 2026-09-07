@@ -31,8 +31,9 @@
     "cli": "node lib/cli.js",
     "test": "vitest run",
     "test:watch": "vitest",
+    "smoke": "node scripts/console-smoke.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check": "tsc -p tsconfig.json --noEmit && vitest run && tsc -p tsconfig.json"
+    "check": "tsc -p tsconfig.json --noEmit && vitest run && tsc -p tsconfig.json && node scripts/console-smoke.mjs"
   },
   "engines": {
     "node": ">=22.5.0"

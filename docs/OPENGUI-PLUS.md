@@ -10,7 +10,7 @@
 
 | # | Module | What it solves |
 |---|--------|---------------|
-| 1 | Wireless debugging `wlan-connection` | USB / WiFi / auto connectivity, remembered devices, live status |
+| 1 | Wireless debugging `wlan-connection` | USB / WiFi / auto connectivity, remembered devices, live status, Android 11+ pairing by six-digit code or QR (mDNS-resolved pairing port) |
 | 2 | Snippet library `snippet-library` | Aliases + tags + autocomplete, JSON import/export |
 | 3 | Action templates `action-template` | Record multi-step ops, parameterize with `{{vars}}`, one-click run |
 | 4 | Scheduler `scheduler` | One-shot / daily / weekly / Cron, run snippets·templates·flows |
@@ -99,7 +99,7 @@ opengui-plus help
 
 | Module | Key methods |
 |--------|-------------|
-| `wlan-connection` | `status` · `setMode` · `discover` · `listDevices` · `saveDevice` · `removeDevice` · `connect` · `disconnect` · `pair` · `enableTcpip` · `autoConnect` |
+| `wlan-connection` | `status` · `setMode` · `discover` · `listDevices` · `saveDevice` · `removeDevice` · `connect` · `disconnect` · `pair` · `pairWithCode` · `pairWithQr` · `pairAndConnect` · `mdnsServices` · `parsePairingQr` · `decodePairingQr` · `pairingGuide` · `enableTcpip` · `autoConnect` |
 | `snippet-library` | `list` · `save` · `remove` · `resolve` · `complete` · `listTags` · `exportJson` · `importJson` |
 | `action-template` | `startRecording` · `recordStep` · `stopRecording` · `list` · `get` · `remove` · `update` · `execute` · `save-from-demo` |
 | `scheduler` | `create` · `list` · `update` · `remove` · `enable` · `disable` · `runNow` · `tick` · `nextRuns` · `runs` |
@@ -161,7 +161,40 @@ Override with `--data-dir <dir>` or the `OPENGUI_PLUS_DATA_DIR` env var. Files a
 ```bash
 npm run typecheck   # tsc --noEmit
 npm test            # vitest run
-npm run check       # typecheck + test + build
+npm run build       # emit lib/
+npm run smoke       # boot the real console, exercise all ten modules
+npm run check       # all of the above
 ```
 
 Add a module by creating `src/modules/<your-module>/index.ts` with `defineModule({...})` and appending it to `defaultModules` in `src/index.ts` — no other module needs changes.
+
+## 8. Console front end
+
+`web/index.html` is a zero-dependency single-page console with two layers:
+
+1. **Curated cards** — hand-written high-frequency actions for the ten modules.
+2. **Method browser** — built from `/api/modules` `methodSpecs`, so **all 100+ methods are reachable** and new server-side methods need no front-end change.
+
+Two conventions worth knowing:
+
+- Every registry call is wrapped as `{ ok: true, value }` and a module may itself return a `Result`, so the browser unwraps **twice**. The inner check is deliberately strict (a real `Result` carries `value` on success and a string `error` on failure) so an execution report like `{ ok: true, results: [...] }` is not mistaken for an envelope.
+- On startup the page cross-checks every hard-coded method name against the registry and warns on the overview panel if any is missing, rather than failing silently with HTTP 400.
+
+## 9. Acceptance defect fixes (F-01 … F-05)
+
+The first DeepSeek Harness acceptance run (67 tests) surfaced five defects. All are fixed, with regression tests in `src/core/regressions.test.ts`:
+
+| ID | Symptom | Root cause | Fix |
+| --- | --- | --- | --- |
+| F-01 | Scheduler accepted targets that do not exist | `context.call` returns an outer `{ ok: true, value }`; only the outer flag was checked | New `callModule()` in `src/core/call.ts` unwraps both layers; `create`/`update` run `verifyTarget()` (skip with `skipTargetCheck: true`) |
+| F-02 | Intermittent `EPERM` when switching project groups on Windows | Two writers renaming the same `current-project.json` | Atomic write with rename retry/backoff, unique temp names and a direct-write fallback; switching goes through a single awaited `__host__.switchProject` |
+| F-03 | Demo → template reported success but nothing was saved | Passed `{ template }` where `save-from-demo` wants `{ name, steps }`, and only the outer `ok` was read | Pass the fields, unwrap with `callModule`, return `templateId` |
+| F-04 | Zero tools registered under dsh-tools | Missing required `output.render`; `parameters` used the JSON Schema dialect | `src/dsh/adapter.ts` now probes the dialect (modern / legacy) and builds the matching spec; `dshToolName` splits camelCase |
+| F-05 | Template execution sent `{{var}}` straight to adb | Branches read `step.params` instead of the substituted copy | All branches read the result of `resolveParams()` |
+
+Two further bugs were found and fixed while verifying:
+
+- **`project-group.current` always `null` after a switch** — `switch` triggers the host's `reseatAll`, so the module reloaded the stale file and then wrote it back over the very key the host had just written. `load()` now falls back to the host's `ctx.projectId`, and `switch` re-asserts the pointer afterwards.
+- **`store.update` self-deadlock** — calling `set()` inside `update()` enqueued twice on the same key and awaited the outer task forever. The write path is now inlined.
+
+Verified: `tsc --noEmit` clean, 69 unit tests pass, build succeeds, `npm run smoke` 29/29.

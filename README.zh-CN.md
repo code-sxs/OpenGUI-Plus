@@ -38,7 +38,7 @@ OpenGUI-Plus 不是只改了仓库名字：它在原有 Android GUI Agent 之上
 
 | # | 模块 | 你可以直接做什么 | 解决的实际问题 |
 |---|---|---|---|
-| 1 | **无线调试连接** `wlan-connection` | USB / WiFi / 自动连接，保存设备，查看实时状态，Android 11+ 配对 | 不再反复输入设备地址，也不用手动切换 USB 与无线调试 |
+| 1 | **无线调试连接** `wlan-connection` | USB / WiFi / 自动三种模式；记住设备；实时状态；Android 11+ 支持**六位配对码配对**、**手机二维码配对**，以及**电脑生成二维码让手机扫描的反向配对流**（mDNS 自动解析配对端口） | 不再反复输入设备地址，也不用再被“配对端口 / 连接端口”绕晕 |
 | 2 | **快捷指令库** `snippet-library` | 给长指令设置别名、标签和自动补全，JSON 导入导出 | 常用 ADB / GUI 指令可复用、可迁移、可搜索 |
 | 3 | **动作模板录制** `action-template` | 录制多步动作，自动提取 `{{变量}}`，传参后一键执行 | 把一次性的手工操作变成可重复的自动化模板 |
 | 4 | **定时任务** `scheduler` | 单次、每天、每周、Cron 调度，执行指令 / 模板 / 流程并记录日志 | 巡检、批处理和周期性操作无需人工盯着 |
@@ -65,6 +65,7 @@ npm install
 npm run build
 node lib/cli.js modules                       # 查看 10 个模块
 node lib/cli.js call wlan-connection.status   # 查看设备连接状态
+node lib/cli.js call wlan-connection.generatePairingQr --json '{"serviceName":"studio-opengui","code":"123456"}'  # 电脑生成二维码供手机扫描
 node lib/cli.js call snippet-library.complete --prefix sc
 node lib/cli.js call replay.listReplays       # 查看执行回放
 node lib/cli.js serve --port 8787             # 打开可视化控制台

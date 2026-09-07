@@ -39,7 +39,7 @@ OpenGUI-Plus is more than a renamed fork. It adds a **standalone, persistent, co
 
 | # | Module | What you can do | Why it matters |
 |---|---|---|---|
-| 1 | **Wireless debugging** `wlan-connection` | Connect over USB, WiFi, or auto mode; save devices; inspect live status; pair Android 11+ devices | Stop re-entering endpoints and manually switching transports |
+| 1 | **Wireless debugging** `wlan-connection` | USB / WiFi / auto modes; remembered devices; live status; Android 11+ pairing via **six-digit code** or **QR code** (QR resolves the pairing port through mDNS) | Stop re-entering endpoints, and stop mixing up the pairing port with the connect port |
 | 2 | **Snippet library** `snippet-library` | Give long commands aliases, tags, and autocomplete; import/export JSON | Turn repetitive ADB / GUI commands into reusable, portable building blocks |
 | 3 | **Action templates** `action-template` | Record multi-step actions, extract `{{variables}}`, and run with parameters | Convert one-off manual work into repeatable automation |
 | 4 | **Scheduler** `scheduler` | Run one-shot, daily, weekly, or Cron jobs against snippets, templates, or flows | Automate inspections, batches, and recurring mobile operations |
