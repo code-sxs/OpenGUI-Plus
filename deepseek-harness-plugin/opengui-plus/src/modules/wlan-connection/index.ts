@@ -106,6 +106,16 @@ export interface DiscoveredDevice {
   readonly known: boolean
   readonly deviceId?: string
   readonly name?: string
+  /**
+   * Stable identifier for the physical phone so the UI can dedup across the
+   * three ways to reach it (USB row, online WiFi row, mDNS pairable).
+   *
+   * For a USB row this is the adb serial; for an online WiFi row it is the
+   * host (we don't have a serial from `adb devices`); for a pairable mDNS
+   * row it is the USB serial extracted from `adb-<serial>-<rand>`, or the
+   * host when the service name does not embed a serial.
+   */
+  readonly physicalKey: string
 }
 
 /** Wireless-debugging services surfaced via mDNS that aren't yet in `adb devices`. */
@@ -116,17 +126,49 @@ export interface DiscoveredPairable {
   /** `pairing` = `_adb-tls-pairing._tcp` (needs a code), `connect` = `_adb._tcp` (already paired). */
   readonly kind: 'pairing' | 'connect'
   readonly known: boolean
+  /**
+   * Same shape as {@link DiscoveredDevice.physicalKey}. When it matches the
+   * physicalKey of an online device the UI should hide this entry — the same
+   * physical phone is already reachable and we don't want to re-prompt for
+   * a second transport.
+   */
+  readonly physicalKey: string
+}
+
+/**
+ * Try to pull the adb serial out of a stock `adb-<serial>-<rand>` mDNS
+ * service name (the format HyperOS, MIUI, stock Android and most ROMs use).
+ * Returns undefined when the name doesn't match — older ROMs may use the
+ * product/model as the service name, in which case the caller falls back to
+ * `host` as the physical key.
+ */
+export function extractUsbSerialFromServiceName(name: string): string | undefined {
+  // Strip the trailing transport suffix so `adb-pb5pgmjvlfbmay85-uKDZuY._adb-tls-connect._tcp`
+  // becomes `adb-pb5pgmjvlfbmay85-uKDZuY`.
+  const base = name.replace(/\._adb.*$/, '').replace(/\._adb-tls-(pairing|connect)\._tcp$/, '')
+  if (base === name) return undefined
+  // Expect `adb-<serial>-<rand>`. The serial may itself contain dashes.
+  const match = base.match(/^adb-(.+)-[A-Za-z0-9]{4,}$/)
+  return match?.[1]
 }
 
 /**
  * Reduce mDNS services to the deduped, "not yet connected" set the UI cares
  * about. Exported so the regression test can exercise the merge logic
  * without standing up the full host.
+ *
+ * Three filters are applied, in order:
+ * 1. Already connected via the same `host:port` (online WiFi row).
+ * 2. Already saved as a WiFi device (known endpoint).
+ * 3. mDNS row whose embedded adb serial matches an online USB device — the
+ *    same physical phone is plugged in, so we don't want to also offer the
+ *    WiFi pairing card.
  */
 export function pickPairable(
   services: readonly MdnsService[],
   connectedEndpoints: ReadonlySet<string>,
   knownEndpoints: ReadonlySet<string>,
+  onlineUsbSerials: ReadonlySet<string> = new Set(),
 ): readonly DiscoveredPairable[] {
   const seen = new Set<string>()
   const out: DiscoveredPairable[] = []
@@ -137,13 +179,21 @@ export function pickPairable(
     if (!isPairing && !isConnect) continue
     const key = `${svc.host}:${svc.port}`
     if (seen.has(key) || connectedEndpoints.has(key)) continue
+    // Drop mDNS rows for a phone that's already reachable via USB: the user
+    // is not going to want to re-pair the same physical device on a second
+    // transport. The match is conservative — only when the mDNS service name
+    // embeds the adb serial verbatim.
+    const embeddedSerial = extractUsbSerialFromServiceName(svc.name)
+    if (embeddedSerial !== undefined && onlineUsbSerials.has(embeddedSerial)) continue
     seen.add(key)
+    const physicalKey = embeddedSerial ?? svc.host
     out.push({
       serviceName: svc.name,
       host: svc.host,
       port: svc.port,
       kind: isPairing ? 'pairing' : 'connect',
       known: knownEndpoints.has(key),
+      physicalKey,
     })
   }
   return out
@@ -156,11 +206,54 @@ const DEFAULT_PREFERENCE: ConnectionPreference = { mode: 'auto', autoConnect: tr
 /** Pairing waits on a human to read a code off the phone, so be patient. */
 const PAIR_TIMEOUT_MS = 30_000
 const MDNS_TIMEOUT_MS = 15_000
+/**
+ * After `adb pair` succeeds, Android takes 1-3 seconds to start advertising
+ * the `_adb-tls-connect._tcp` service. Poll for at most this long before
+ * giving up and falling back to 5555.
+ */
+const CONNECT_MDNS_POLL_MS = 6_000
+const CONNECT_MDNS_POLL_STEP_MS = 600
+/** Per-probe mDNS timeout, kept short to keep the loop snappy. */
+const CONNECT_MDNS_PROBE_MS = 1_500
 /** Only command-line QR decoder worth probing for; see `decodePairingQr`. */
 const DEFAULT_QR_DECODER = 'zbarimg'
 const PAIRING_QR_SERVICE_PREFIX = 'opengui-plus'
 const QR_SCAN_TIMEOUT_MS = 60_000
 const QR_SCAN_POLL_MS = 750
+
+/**
+ * Mask anything that smells like a phone number before sending it over the
+ * wire — Android exposes the line number through `dumpsys telephony.registry`,
+ * but a screenshot of the device info card is the last place that should leak
+ * a real subscriber number to the wider team.
+ */
+export function maskPhoneNumber(raw: string | undefined | null): string {
+  if (raw === undefined || raw === null) return ''
+  const trimmed = String(raw).trim()
+  if (trimmed.length === 0 || trimmed === 'null' || trimmed === 'unknown') return ''
+  const digits = trimmed.replace(/\D/g, '')
+  if (digits.length < 7) return trimmed.length > 4 ? `${trimmed.slice(0, 2)}****${trimmed.slice(-2)}` : ''
+  return `${digits.slice(0, 3)}****${digits.slice(-4)}`
+}
+
+/** Mask an IMSI similarly — show the MCC/MNC, hide the rest. */
+export function maskImsi(raw: string | undefined | null): string {
+  if (raw === undefined || raw === null) return ''
+  const trimmed = String(raw).trim()
+  if (trimmed.length === 0 || trimmed === 'null') return ''
+  const digits = trimmed.replace(/\D/g, '')
+  if (digits.length < 6) return trimmed
+  return `${digits.slice(0, 3)}${'*'.repeat(Math.max(0, digits.length - 5))}${digits.slice(-2)}`
+}
+
+/** Convert a byte count into a short "12.4 GB" string for the device card. */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return ''
+  const gb = bytes / (1024 ** 3)
+  if (gb >= 1) return gb >= 10 ? `${gb.toFixed(1)} GB` : `${gb.toFixed(2)} GB`
+  const mb = bytes / (1024 ** 2)
+  return mb >= 1 ? `${mb.toFixed(0)} MB` : `${(bytes / 1024).toFixed(0)} KB`
+}
 
 function isJsonRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -553,13 +646,47 @@ export function createWirelessConnectionModule(): PlusModule {
     return fail('无法确定配对地址：请传 host + port，或提供二维码内容')
   }
 
-  /** Connect port: explicit → mDNS `_adb-tls-connect` (same host first) → 5555. */
-  async function resolveConnectPort(host: string, requested: number | undefined): Promise<{ readonly port: number, readonly via: string }> {
+  /**
+   * Resolve the port to `adb connect` against.
+   *
+   * Priority: explicit `requested` → mDNS `_adb-tls-connect` on the same host
+   * (with a short retry loop, because the connect entry typically appears
+   * 1-3s AFTER `adb pair` succeeds) → common fallback 5555.
+   *
+   * `excludePort` is the pairing port — Android never re-uses it for the
+   * connect service, so we can safely skip it and prevent the very common
+   * "adb connect <pairingPort>" → "actively refused" failure.
+   */
+  async function resolveConnectPort(
+    host: string,
+    requested: number | undefined,
+    excludePort: number | undefined,
+    waitMs: number = CONNECT_MDNS_POLL_MS,
+  ): Promise<{ readonly port: number, readonly via: string, readonly waitedMs?: number }> {
     if (requested !== undefined) return { port: requested, via: 'input' }
-    const services = await mdnsRows()
-    const connect = services.filter(service => service.type.toLowerCase().includes(MDNS_CONNECT_TYPE))
-    const hit = connect.find(service => service.host === host) ?? connect[0]
-    return hit === undefined ? { port: DEFAULT_PORT, via: 'default' } : { port: hit.port, via: 'mdns' }
+
+    // The connect mDNS entry normally appears 1-3s after `adb pair` returns.
+    // We poll for up to `waitMs` before giving up. Tests pass 0 to skip the
+    // wait; production uses CONNECT_MDNS_POLL_MS.
+    const deadline = Date.now() + Math.max(0, waitMs)
+    const pollMs = CONNECT_MDNS_POLL_STEP_MS
+    let waited = 0
+    let lastSeen: number | undefined
+    while (Date.now() < deadline) {
+      const services = await mdnsRows(CONNECT_MDNS_PROBE_MS)
+      const connect = services.filter(s => s.type.toLowerCase().includes(MDNS_CONNECT_TYPE) && s.host === host)
+      const hit = connect.find(s => s.port !== excludePort)
+      if (hit !== undefined) return { port: hit.port, via: 'mdns', waitedMs: waited }
+      if (connect[0] !== undefined && lastSeen === undefined) lastSeen = connect[0].port
+      await new Promise<void>(resolve => setTimeout(resolve, pollMs))
+      waited += pollMs
+    }
+    if (lastSeen !== undefined && lastSeen !== excludePort) return { port: lastSeen, via: 'mdns-pending', waitedMs: waited }
+
+    // No mDNS connect entry at all — fall back to the canonical adb-tcpip port
+    // (the user can override from the device list if their phone is on a
+    // different port).
+    return { port: DEFAULT_PORT, via: 'default', waitedMs: waited }
   }
 
   async function connectWifiEndpoint(endpoint: WifiEndpoint, name: string): Promise<Result<ConnectionStatus>> {
@@ -708,13 +835,18 @@ export function createWirelessConnectionModule(): PlusModule {
 
         const found: DiscoveredDevice[] = online.map((row) => {
           const profile = matchProfile(row)
+          const endpoint = splitEndpoint(row.serial, DEFAULT_PORT)
           return {
             serial: row.serial,
             state: row.state,
-            transport: splitEndpoint(row.serial, DEFAULT_PORT) === undefined ? 'usb' : 'wifi',
+            transport: endpoint === undefined ? 'usb' : 'wifi',
             known: profile !== undefined,
             ...(row.model === undefined ? {} : { model: row.model }),
             ...(profile === undefined ? {} : { deviceId: profile.id, name: profile.name }),
+            // USB serials already identify the physical device; for an online
+            // WiFi row the host is the best we can do (`adb devices` doesn't
+            // surface a serial for `host:port` rows).
+            physicalKey: endpoint === undefined ? row.serial : endpoint.host,
           }
         })
 
@@ -729,9 +861,121 @@ export function createWirelessConnectionModule(): PlusModule {
             .filter(d => d.transport === 'wifi' && d.wifi !== undefined)
             .map(d => `${d.wifi!.host}:${d.wifi!.port}`),
         )
-        const pairable = pickPairable(services, connectedEndpoints, knownEndpoints)
+        const onlineUsbSerials = new Set(
+          found.filter(d => d.transport === 'usb').map(d => d.serial),
+        )
+        const pairable = pickPairable(services, connectedEndpoints, knownEndpoints, onlineUsbSerials)
 
         return { devices: found, pairable, mdnsError, adbError, mode: preference.mode }
+      },
+
+      /**
+       * Pull the phone's hardware/software profile for the device card.
+       * All values are best-effort: a field we cannot read (locked-down ROM,
+       * missing permission, sim slot empty) is omitted, never invented.
+       *
+       * Sensitive fields (MSISDN / IMSI) are masked before they leave the
+       * module, so a UI screenshot of the device card cannot leak the
+       * subscriber number to the rest of the team.
+       */
+      async deviceInfo(input) {
+        const serial = readString(input, 'serial') ?? ''
+        if (serial.length === 0) return fail('deviceInfo 需要 serial')
+        const runner = adb()
+        if (runner === null) return fail('deviceInfo 需要 adb')
+        const target = ['-s', serial]
+
+        async function getprop(key: string): Promise<string> {
+          try {
+            const r = await runner!.run([...target, 'shell', 'getprop', key], 4_000)
+            return r.code === 0 ? r.stdout.trim() : ''
+          } catch { return '' }
+        }
+        async function shell(cmd: string, timeout = 4_000): Promise<string> {
+          try {
+            const r = await runner!.run([...target, 'shell', cmd], timeout)
+            return r.code === 0 ? r.stdout : ''
+          } catch { return '' }
+        }
+
+        // Read everything in parallel — they're all independent adb shells
+        // and the slowest single call gates the whole fetch.
+        const [
+          version, sdk, securityPatch,
+          model, brand, manufacturer, marketName, deviceName,
+          ipOutput, ssid,
+          meminfo,
+          dfOutput,
+          telephonyDump, sim2Dump,
+        ] = await Promise.all([
+          getprop('ro.build.version.release'),
+          getprop('ro.build.version.sdk'),
+          getprop('ro.build.version.security_patch'),
+          getprop('ro.product.model'),
+          getprop('ro.product.brand'),
+          getprop('ro.product.manufacturer'),
+          getprop('ro.config.marketing_name'),
+          getprop('ro.product.device'),
+          shell('ip -4 addr show wlan0 2>/dev/null || ip addr show wlan0 2>/dev/null'),
+          (async () => {
+            const raw = await getprop('wifi.ssid')
+            return raw.replace(/^"|"$/g, '')
+          })(),
+          shell('cat /proc/meminfo | head -3'),
+          shell('df -k /data | tail -1'),
+          shell('dumpsys telephony.registry'),
+          shell('dumpsys telephony.registry | sed -n \'0,/mDataConnectionStateLinkProperties/p\' | tail -80'),
+        ])
+
+        const ipv4 = ipOutput.match(/inet (\d+\.\d+\.\d+\.\d+)/)?.[1] ?? ''
+        const ramTotalKb = parseInt(meminfo.match(/MemTotal:\s+(\d+)/)?.[1] ?? '0', 10)
+        const ramAvailKb = parseInt(meminfo.match(/MemAvailable:\s+(\d+)/)?.[1] ?? '0', 10)
+        const dfMatch = dfOutput.match(/(\d+)\s+(\d+)\s+(\d+)/)
+        const storageTotalBytes = dfMatch ? parseInt(dfMatch[2]!, 10) * 1024 : 0
+        const storageAvailBytes = dfMatch ? parseInt(dfMatch[3]!, 10) * 1024 : 0
+
+        // SIM parsing: dumpsys output is Android-version-dependent. The
+        // easiest robust read is the mOperatorAlphaLong / mLine1Number /
+        // mSubscriberId trio. The second dump is an attempt at the second
+        // slot — when the device is single-SIM most of those values come
+        // back empty and we just don't render that card.
+        function extractSim(dump: string): { carrier: string; number: string; imsi: string } | undefined {
+          if (!dump) return undefined
+          const alpha = (dump.match(/mOperatorAlphaLong=([^\s]+)/) ?? [])[1]
+          const numeric = (dump.match(/mOperatorNumeric=([^\s]+)/) ?? [])[1]
+          const line1 = (dump.match(/mLine1Number=([^\s]+)/) ?? [])[1]
+          const subId = (dump.match(/mSubscriberId=([^\s]+)/) ?? [])[1]
+          const carrier = (alpha && alpha !== 'null') ? alpha : ((numeric && numeric !== 'null') ? numeric : '')
+          const number = maskPhoneNumber(line1)
+          const imsi = maskImsi(subId)
+          if (!carrier && !number && !imsi) return undefined
+          return { carrier: carrier || '未知运营商', number, imsi }
+        }
+        const sim1 = extractSim(telephonyDump)
+        const sim2 = extractSim(sim2Dump !== telephonyDump ? sim2Dump : '')
+
+        return {
+          android: {
+            version,
+            sdk,
+            securityPatch,
+          },
+          device: {
+            model,
+            brand,
+            manufacturer,
+            marketName: marketName || model,
+            deviceName,
+          },
+          network: { ipv4, ssid },
+          memory: {
+            ramTotal: formatBytes(ramTotalKb * 1024),
+            ramAvail: formatBytes(ramAvailKb * 1024),
+            storageTotal: formatBytes(storageTotalBytes),
+            storageAvail: formatBytes(storageAvailBytes),
+          },
+          sim: [sim1, sim2].filter((s): s is { carrier: string; number: string; imsi: string } => s !== undefined),
+        }
       },
 
       /**
@@ -1017,7 +1261,10 @@ export function createWirelessConnectionModule(): PlusModule {
         const requested = typeof input.connectPort === 'number' && Number.isInteger(input.connectPort)
           ? input.connectPort
           : undefined
-        const connect = await resolveConnectPort(service.value.host, requested)
+        const waitMs = typeof input.connectPortWaitMs === 'number' && Number.isFinite(input.connectPortWaitMs)
+          ? Math.max(0, Math.trunc(input.connectPortWaitMs))
+          : CONNECT_MDNS_POLL_MS
+        const connect = await resolveConnectPort(service.value.host, requested, service.value.port, waitMs)
         const connectEndpoint: WifiEndpoint = { host: service.value.host, port: connect.port }
         const name = readString(input, 'deviceName') ?? readString(input, 'name') ?? service.value.name
         const connected = await connectWifiEndpoint(connectEndpoint, name)
@@ -1121,25 +1368,38 @@ export function createWirelessConnectionModule(): PlusModule {
         const requested = typeof input.connectPort === 'number' && Number.isInteger(input.connectPort)
           ? input.connectPort
           : undefined
-        const connect = await resolveConnectPort(endpoint.host, requested)
+        // Pass the pairing port as `excludePort` so we never accidentally try
+        // to `adb connect` the pairing port (which is the #1 cause of the
+        // "actively refused" failure after a successful pair).
+        const waitMs = typeof input.connectPortWaitMs === 'number' && Number.isFinite(input.connectPortWaitMs)
+          ? Math.max(0, Math.trunc(input.connectPortWaitMs))
+          : CONNECT_MDNS_POLL_MS
+        const connect = await resolveConnectPort(endpoint.host, requested, endpoint.port, waitMs)
         const connectEndpoint: WifiEndpoint = { host: endpoint.host, port: connect.port }
         const name = readString(input, 'name') ?? `${endpoint.host}:${connect.port}`
         const connected = await connectWifiEndpoint(connectEndpoint, name)
+
+        // Even when the connect step fails we still want to remember the
+        // pairing — the user can adjust the connect port from the device
+        // list and retry, instead of having to re-enter the 6-digit code.
+        let deviceId: string | undefined
+        if (input.save !== false) {
+          const profile = await upsertWifiDevice(endpoint.host, connect.port, name, endpoint.port)
+          deviceId = profile.id
+        }
+
         if (!connected.ok) {
           return {
             paired: true,
             connected: false,
             pairingEndpoint: endpoint,
             connectEndpoint,
+            connectPortResolvedBy: connect.via,
+            ...(connect.waitedMs === undefined ? {} : { waitedMs: connect.waitedMs }),
+            ...(deviceId === undefined ? {} : { deviceId }),
             error: connected.error,
-            hint: '配对已成功，但连接失败：确认手机上无线调试处于开启状态、连接端口正确，且电脑与手机在同一局域网。',
+            hint: '配对已成功，连接失败：手机上「无线调试」开关需保持开启；连接端口（通常是「无线调试」主界面显示的端口）与配对端口不同，必要时到「设备」面板里手动调整端口后点「连接」重试。',
           }
-        }
-
-        let deviceId: string | undefined
-        if (input.save !== false) {
-          const profile = await upsertWifiDevice(endpoint.host, connect.port, name, endpoint.port)
-          deviceId = profile.id
         }
 
         return {
@@ -1264,6 +1524,7 @@ export function createWirelessConnectionModule(): PlusModule {
       { name: 'status', summary: '刷新并返回当前连接状态' },
       { name: 'setMode', summary: '设置连接模式', input: { mode: 'usb | wifi | auto', autoConnect: '启动时是否自动连接' } },
       { name: 'discover', summary: '探测 adb 当前可见的设备' },
+      { name: 'deviceInfo', summary: '读取手机硬件/系统信息（安卓版本/IP/内存/SIM，敏感字段脱敏）', input: { serial: 'adb 序列号' } },
       { name: 'diagnose', summary: '运行诊断：返回 adb 二进制路径、version / devices -l / mdns services 的原始输出，用于排查「不刷新/扫不到设备」' },
       { name: 'listDevices', summary: '列出已保存的设备' },
       { name: 'screencap', summary: '截取设备屏幕 PNG（供控制台投屏使用）', input: { serial: 'adb 序列号' } },

@@ -295,6 +295,10 @@ describe('pairing: pairAndConnect', () => {
     })
     const result = await harness.call('pairAndConnect', {
       host: '192.168.1.5', port: 39443, code: '123456', save: false,
+      // Skip the post-pair mDNS wait — fake adb returns nothing, polling
+      // would only delay the test. Production uses 6s to ride out Android's
+      // ~1-3s gap between pair succeeding and `_adb-tls-connect` showing up.
+      connectPortWaitMs: 0,
     })
     expect(result.connected).toBe(true)
     expect(result.connectPortResolvedBy).toBe('default')

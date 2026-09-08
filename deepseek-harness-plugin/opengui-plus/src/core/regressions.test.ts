@@ -270,6 +270,26 @@ describe('设备发现：wlan-connection.discover 必须包含 mDNS 可配对设
     expect(known).toMatchObject({ kind: 'pairing', host: '10.0.0.5', known: true })
   })
 
+  it('pickPairable 剔除 mDNS 行中嵌入 USB 序列号等于在线 USB 设备的那行', async () => {
+    const { pickPairable } = await import('../modules/wlan-connection/index.js')
+    const { MDNS_CONNECT_TYPE, MDNS_PAIRING_TYPE } = await import('../modules/wlan-connection/pairing.js')
+    const services = [
+      // 这台的 USB 序列号是 pb5pgmjvlfbmay85，且 service name 把它嵌进去了
+      { name: 'adb-pb5pgmjvlfbmay85-uKDZuY._adb-tls-connect._tcp', type: MDNS_CONNECT_TYPE, host: '192.168.1.108', port: 37807 },
+      // 另一台不同的手机，应该保留
+      { name: 'adb-pixel7-xYZZZ._adb-tls-pairing._tcp', type: MDNS_PAIRING_TYPE, host: '192.168.1.50', port: 37121 },
+    ]
+    const out = pickPairable(
+      services,
+      new Set(),                                  // 没有走 WiFi 在线
+      new Set(),                                  // 没有任何已保存的 WiFi 设备
+      new Set(['pb5pgmjvlfbmay85']),              // ← 这台手机的 USB 串行已经在 adb devices 里
+    )
+    // 手机 A 已经在 USB 列表里 → 不该再冒 WiFi connect 行
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ host: '192.168.1.50', port: 37121, kind: 'pairing', physicalKey: 'pixel7' })
+  })
+
   it('discover 在 adb 不可用时不崩，pairable 为空数组', async () => {
     const { host, call } = await boot(null)
     const result = await host.call('wlan-connection.discover', {})

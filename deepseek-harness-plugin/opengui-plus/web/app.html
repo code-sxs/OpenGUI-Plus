@@ -145,6 +145,83 @@
     border-radius: 999px; padding: 5px 10px; font-size: 12px;
   }
   .device-card .actions button:hover { background: var(--brand-soft); color: var(--brand); }
+  .device-card .actions button.info-on { background: var(--brand-soft); color: var(--brand); }
+  .device-card .info {
+    display: none; padding: 4px 12px 14px;
+    border-top: 1px dashed var(--line); margin-top: 4px;
+  }
+  .device-card .info.open { display: block; }
+  .device-card .info .loading { color: var(--ink-3); font-size: 12px; padding: 8px 0; }
+  .device-card .info-stage {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    margin-top: 10px; perspective: 600px;
+  }
+  .device-card .info-tile {
+    background: linear-gradient(135deg, #eef0ff 0%, #f4eafe 100%);
+    border-radius: 14px; padding: 10px 12px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.8) inset,
+      0 2px 6px rgba(79,70,229,.10),
+      0 6px 16px rgba(79,70,229,.06);
+    transform: rotate(-1deg) translateY(-1px);
+    transition: transform .15s ease;
+  }
+  .device-card .info-tile.alt {
+    background: linear-gradient(135deg, #fff1e6 0%, #fff5d6 100%);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.8) inset,
+      0 2px 6px rgba(249,115,22,.12),
+      0 6px 16px rgba(249,115,22,.06);
+    transform: rotate(1deg) translateY(1px);
+  }
+  .device-card .info-tile.cool {
+    background: linear-gradient(135deg, #e0f7fa 0%, #e8eaf6 100%);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.8) inset,
+      0 2px 6px rgba(8,145,178,.10),
+      0 6px 16px rgba(8,145,178,.06);
+    transform: rotate(.6deg);
+  }
+  .device-card .info-tile.warm {
+    background: linear-gradient(135deg, #ffe4e6 0%, #fce7f3 100%);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.8) inset,
+      0 2px 6px rgba(236,72,153,.10),
+      0 6px 16px rgba(236,72,153,.06);
+    transform: rotate(-.6deg);
+  }
+  .device-card .info-tile .k {
+    font-size: 11px; color: var(--ink-3); letter-spacing: .3px;
+    text-transform: uppercase; margin-bottom: 4px;
+  }
+  .device-card .info-tile .v {
+    font-size: 14.5px; font-weight: 600; color: var(--ink);
+    word-break: break-all;
+  }
+  .device-card .info-tile .v.mono { font-family: ui-monospace, Menlo, monospace; font-weight: 500; font-size: 13.5px; }
+  .device-card .info-sim {
+    margin-top: 10px; padding: 10px 12px;
+    background: linear-gradient(135deg, #f5f3ff 0%, #ecfeff 100%);
+    border-radius: 14px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.8) inset,
+      0 2px 6px rgba(124,58,237,.08),
+      0 6px 16px rgba(124,58,237,.05);
+  }
+  .device-card .info-sim .sim-row {
+    display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+    padding: 3px 0; font-size: 13px;
+  }
+  .device-card .info-sim .sim-row .label { color: var(--ink-3); width: 64px; font-size: 12px; }
+  .device-card .info-sim .sim-row .v { color: var(--ink); }
+  .device-card .info-sim .sim-row .v.mono {
+    font-family: ui-monospace, Menlo, monospace; letter-spacing: .5px;
+    color: #6d28d9; font-weight: 500;
+  }
+  .device-card .info-sim .sim-title {
+    font-size: 11px; color: var(--ink-3); letter-spacing: .3px;
+    text-transform: uppercase; margin-bottom: 6px;
+  }
 
   /* ---------- generic cards / forms ---------- */
   .empty {
@@ -362,6 +439,8 @@ const state = {
   screenshots: new Map(),     // serial -> { url, ts }
   refreshTimer: null,         // screencap polling
   deviceTimer: null,          // periodic discover() polling for live refresh
+  deviceInfoOpen: new Set(),  // serials whose inline device-info panel is unfolded
+  deviceInfoCache: new Map(), // serial -> cached deviceInfo result
   focusSerial: null,
   tplRecording: null,
 };
@@ -495,6 +574,7 @@ function renderPairableCard(p) {
 function renderDeviceCard(d) {
   const last = state.screenshots.get(d.serial);
   const lastTs = last?.ts ? `<span class="mono" style="font-size:11px;color:var(--ink-3)">${new Date(last.ts).toLocaleTimeString()}</span>` : '';
+  const isOpen = (state.deviceInfoOpen ?? state.knownInfoOpen ?? new Set()).has(d.serial);
   return `
     <div class="device-card" data-serial="${escapeHtml(d.serial)}">
       <div class="frame">
@@ -511,7 +591,11 @@ function renderDeviceCard(d) {
       <div class="actions">
         <button data-act="add" data-serial="${escapeHtml(d.serial)}" data-name="${escapeHtml(d.name ?? d.serial)}">+ 加入管理</button>
         <button data-act="screencap" data-serial="${escapeHtml(d.serial)}">手动截图</button>
-        <button data-act="open" data-serial="${escapeHtml(d.serial)}">查看详情</button>
+        <button data-act="info" data-serial="${escapeHtml(d.serial)}" class="${isOpen ? 'info-on' : ''}">设备信息 ${isOpen ? '▴' : '▾'}</button>
+        <button data-act="open" data-serial="${escapeHtml(d.serial)}">管理</button>
+      </div>
+      <div class="info ${isOpen ? 'open' : ''}" data-info-for="${escapeHtml(d.serial)}">
+        <div class="loading">点击上方「设备信息 ▾」加载…</div>
       </div>
     </div>
   `;
@@ -526,6 +610,7 @@ function bindDashboardEvents() {
       if (act === 'add') return addDeviceFromDiscover(serial, btn.dataset.name);
       if (act === 'screencap') return takeScreenshot(serial);
       if (act === 'open') return openModule('wlan-connection', serial);
+      if (act === 'info') return toggleDeviceInfo(serial, btn);
     });
   });
   document.querySelectorAll('[data-pair]').forEach(btn => {
@@ -557,6 +642,75 @@ async function takeScreenshot(serial) {
   const url = `/files/${encodeURI(r.value.path)}?ts=${Date.now()}`;
   state.screenshots.set(serial, { url, ts: r.value.takenAt });
   renderCenter();
+}
+
+async function toggleDeviceInfo(serial, btn) {
+  const open = state.deviceInfoOpen;
+  if (open.has(serial)) {
+    open.delete(serial);
+    renderCenter();
+    return;
+  }
+  open.add(serial);
+  renderCenter();
+  // Lazily load once on first open — the in-card panel keeps polling the
+  // underlying data (screencap/discover) on its own schedule, but the
+  // static snapshot (version / RAM / IP / SIM) is fetched only on demand.
+  if (!state.deviceInfoCache.has(serial)) {
+    await loadDeviceInfo(serial);
+  } else {
+    renderDeviceInfoPanel(serial);
+  }
+}
+
+async function loadDeviceInfo(serial) {
+  const panel = document.querySelector(`.info[data-info-for="${cssEscape(serial)}"]`);
+  if (panel) panel.innerHTML = '<div class="loading">读取设备信息…</div>';
+  const r = await call('wlan-connection.deviceInfo', { serial });
+  if (!r.ok) {
+    if (panel) panel.innerHTML = `<div class="loading" style="color:var(--err)">读取失败：${escapeHtml(r.error)}</div>`;
+    return;
+  }
+  state.deviceInfoCache.set(serial, r.value);
+  renderDeviceInfoPanel(serial);
+}
+
+function renderDeviceInfoPanel(serial) {
+  const info = state.deviceInfoCache.get(serial);
+  if (!info) return;
+  const panel = document.querySelector(`.info[data-info-for="${cssEscape(serial)}"]`);
+  if (!panel) return;
+  const a = info.android ?? {};
+  const dev = info.device ?? {};
+  const net = info.network ?? {};
+  const mem = info.memory ?? {};
+  const sims = info.sim ?? [];
+  const tiles = [
+    { cls: 'alt',    k: '安卓',     v: a.version ? `Android ${escapeHtml(a.version)}${a.sdk ? ' (SDK ' + escapeHtml(a.sdk) + ')' : ''}` : '—' },
+    { cls: '',       k: '设备名',   v: escapeHtml(dev.marketName || dev.model || dev.deviceName || '—') },
+    { cls: 'cool',   k: 'IP / 端口', v: net.ipv4 ? `<span class="mono">${escapeHtml(net.ipv4)}${net.ssid ? ' · ' + escapeHtml(net.ssid) : ''}</span>` : '—' },
+    { cls: 'warm',   k: '内存',     v: mem.ramTotal ? `${escapeHtml(mem.ramTotal)}  剩余 ${escapeHtml(mem.ramAvail || '?')}` : '—' },
+    { cls: 'alt',    k: '存储',     v: mem.storageTotal ? `${escapeHtml(mem.storageTotal)}  剩余 ${escapeHtml(mem.storageAvail || '?')}` : '—' },
+    { cls: 'cool',   k: '安全补丁', v: a.securityPatch ? escapeHtml(a.securityPatch) : '—' },
+  ];
+  const tilesHtml = tiles.map(t => `<div class="info-tile ${t.cls}"><div class="k">${t.k}</div><div class="v ${t.cls === 'cool' && t.k.includes('IP') ? 'mono' : ''}">${t.v}</div></div>`).join('');
+  const simHtml = sims.length === 0 ? '' :
+    `<div class="info-sim">
+        <div class="sim-title">SIM 卡（敏感字段已脱敏）</div>
+        ${sims.map((s, i) => `<div class="sim-row"><span class="label">SIM ${i + 1}</span>
+          <span class="v">${escapeHtml(s.carrier || '未知运营商')}</span>
+          <span class="v mono">${s.number ? '📞 ' + escapeHtml(s.number) : '📞 —'}</span>
+          <span class="v mono">${s.imsi ? 'IMSI ' + escapeHtml(s.imsi) : 'IMSI —'}</span>
+        </div>`).join('')}
+      </div>`;
+  panel.innerHTML = `<div class="info-stage">${tilesHtml}</div>${simHtml}`;
+}
+
+// Safe attribute-value escape for querySelector. Serial here only ever comes
+// from adb, so it is `[A-Za-z0-9._:-]+`; CSS.escape would also work in modern
+// browsers, but a minimal one keeps the inline app.html self-contained.
+function cssEscape(value) {
+  return String(value).replace(/[^A-Za-z0-9_-]/g, ch => '\\' + ch);
 }
 
 function startScreenshotPolling() {
@@ -673,14 +827,14 @@ modules['wlan-connection'] = {
   },
   bind(s) {
     const renderTab = (name) => {
-      document.querySelectorAll('#panel [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+      document.querySelectorAll('.modal-mask [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
       document.getElementById('wlan-tab').innerHTML = name === 'list' ? wlanListTab(s)
         : name === 'add' ? wlanAddTab(s)
         : name === 'pair' ? wlanPairTab(s)
         : wlanConnTab(s);
       bindWlanTab(name, s);
     };
-    document.querySelectorAll('#panel [data-tab]').forEach(b => b.addEventListener('click', () => renderTab(b.dataset.tab)));
+    document.querySelectorAll('.modal-mask [data-tab]').forEach(b => b.addEventListener('click', () => renderTab(b.dataset.tab)));
     renderTab('list');
   },
 };
@@ -822,7 +976,7 @@ function bindAddTab(s) {
       else if (btn.dataset.addAct) handleAddAction(btn.dataset.addAct, pane);
     });
   };
-  document.querySelectorAll('#panel [data-add]').forEach(b => b.addEventListener('click', () => renderPane(b.dataset.add)));
+  document.querySelectorAll('.modal-mask [data-add]').forEach(b => b.addEventListener('click', () => renderPane(b.dataset.add)));
   renderPane('auto');
 }
 
@@ -961,32 +1115,45 @@ async function pairDiscoveredDevice(p) {
     const r = await call('wlan-connection.pairAndConnect', { host: p.host, port: p.port, code: code.trim() });
     if (!r.ok) return toast('配对失败：' + r.error, 'err');
     const v = r.value ?? {};
-    toast(v.connected ? '已配对并连接' : '配对完成（连接未建立）', 'ok');
-  } else {
-    // connect-kind: device is already paired, just save the profile and connect.
-    const save = await call('wlan-connection.saveDevice', {
-      transport: 'wifi', host: p.host, port: p.port, name: p.serviceName,
-    });
-    if (!save.ok) return toast('保存失败：' + save.error, 'err');
-    const c = await call('wlan-connection.connect', { mode: 'wifi', id: save.value?.device?.id });
-    if (!c.ok) {
-      // Most common failure: TCP connect to the advertised port is refused,
-      // because Android's wireless-debug listener has dropped (locked screen,
-      // toggle flipped, port rotated) but the stale mDNS entry still
-      // advertises the old port. Surface a clear, actionable hint instead of
-      // the raw "actively refused" error.
-      const raw = String(c.error ?? '');
-      const isRefused = /拒绝|refus|closed|ECONNREFUSED|cannot connect|unable to connect|actively|not listening/i.test(raw);
-      if (isRefused) {
-        toast('端口被拒（手机无线调试监听已掉）→ 保持「无线调试」页面前台打开，5 秒后点「↻ 刷新」重扫端口；或改用「使用配对码配对设备」重新配对', 'err', 5200);
-      } else {
-        toast('连接失败：' + raw, 'err');
-      }
+    await refreshDevices();
+    if (v.connected) {
+      // 配对 + 连接一次到位，关闭弹窗让用户直接看到投屏网格里的实时画面
+      const target = v.connectEndpoint ? `${v.connectEndpoint.host}:${v.connectEndpoint.port}` : `${p.host}:${p.port}`;
+      toast(`已配对并连接 ${target}`, 'ok', 2600);
+      closeModule();
       return;
     }
-    toast('已连接', 'ok');
+    // 配对成功但连接失败 —— 后端通常已经把配对信息保存成设备卡了，
+    // 弹红色 toast 把真实错误摆出来，让用户知道下一步怎么走。
+    const errMsg = v.error ? String(v.error).trim() : '连接未建立（未知原因）';
+    const hint = v.hint ? String(v.hint) : '可在「设备 → 已管理设备」里调整连接端口后点「连接」重试';
+    toast(`配对成功，但连接失败：${errMsg}。${hint}`, 'err', 6500);
+    return;
   }
+  // connect-kind: device is already paired, just save the profile and connect.
+  const save = await call('wlan-connection.saveDevice', {
+    transport: 'wifi', host: p.host, port: p.port, name: p.serviceName,
+  });
+  if (!save.ok) return toast('保存失败：' + save.error, 'err');
+  const c = await call('wlan-connection.connect', { mode: 'wifi', id: save.value?.device?.id });
+  if (!c.ok) {
+    // Most common failure: TCP connect to the advertised port is refused,
+    // because Android's wireless-debug listener has dropped (locked screen,
+    // toggle flipped, port rotated) but the stale mDNS entry still
+    // advertises the old port. Surface a clear, actionable hint instead of
+    // the raw "actively refused" error.
+    const raw = String(c.error ?? '');
+    const isRefused = /拒绝|refus|closed|ECONNREFUSED|cannot connect|unable to connect|actively|not listening/i.test(raw);
+    if (isRefused) {
+      toast('端口被拒（手机无线调试监听已掉）→ 保持「无线调试」页面前台打开，5 秒后点「↻ 刷新」重扫端口；或改用「使用配对码配对设备」重新配对', 'err', 5200);
+    } else {
+      toast('连接失败：' + raw, 'err');
+    }
+    return;
+  }
+  toast('已连接', 'ok');
   await refreshDevices();
+  closeModule();
 }
 
 async function addDeviceFromDiscover(serial, defaultName) {
@@ -1095,7 +1262,7 @@ function wlanConnTab(s) {
 }
 
 function bindConnTab(s) {
-  document.querySelectorAll('#panel [data-conn]').forEach(btn => {
+  document.querySelectorAll('.modal-mask [data-conn]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const a = btn.dataset.conn;
       const target = a === 'disconnect' ? 'wlan-connection.disconnect' : 'wlan-connection.connect';
